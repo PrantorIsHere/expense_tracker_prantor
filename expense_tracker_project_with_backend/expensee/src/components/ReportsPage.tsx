@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { getTransactions, getCategories, getUsers, getLoans, formatCurrency } from '@/lib/storage';
 import { Transaction, Category, User, Loan } from '@/types';
 import {
@@ -18,7 +19,8 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText } from 'lucide-react';
+import { generateCategoryBreakdownPDF } from '@/lib/lib/categoryBreakdownPDF';
 
 export default function ReportsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -473,8 +475,12 @@ export default function ReportsPage() {
 
       {/* Category-wise Detailed Table */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Category-wise Breakdown (All Time)</CardTitle>
+          <Button onClick={generateCategoryBreakdownPDF} variant="outline" size="sm">
+            <FileText className="mr-2 h-4 w-4" />
+            Export PDF Report
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
