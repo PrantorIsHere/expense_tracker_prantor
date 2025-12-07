@@ -90,15 +90,15 @@ export default function Index() {
     .slice(0, 5);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background">
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b px-6 py-4">
+        <header className="bg-card shadow-sm border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-2xl font-bold text-foreground">
                 {activeTab === 'dashboard' && 'Dashboard'}
                 {activeTab === 'transactions' && 'Transaction Manager'}
                 {activeTab === 'reports' && 'Financial Reports'}
@@ -107,7 +107,7 @@ export default function Index() {
                 {activeTab === 'settings' && 'Settings'}
                 {activeTab === 'additional' && 'Additional Info'}
               </h1>
-              <p className="text-gray-600 mt-1">
+              <p className="text-muted-foreground mt-1">
                 {activeTab === 'dashboard' && `Welcome back, ${session?.username}! Here's your financial overview.`}
                 {activeTab === 'transactions' && 'Manage your income and expenses'}
                 {activeTab === 'reports' && 'Analyze your financial data'}
@@ -122,18 +122,18 @@ export default function Index() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-6 bg-background">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsContent value="dashboard" className="space-y-6">
               {/* Financial Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
+                    <CardTitle className="text-sm font-medium text-card-foreground">Total Balance</CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className={`text-2xl font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`text-2xl font-bold ${balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {formatCurrency(balance)}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -142,13 +142,13 @@ export default function Index() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Monthly Income</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Monthly Income</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                       {formatCurrency(monthlyIncome)}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -157,13 +157,13 @@ export default function Index() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Monthly Expenses</CardTitle>
-                    <TrendingDown className="h-4 w-4 text-red-600" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Monthly Expenses</CardTitle>
+                    <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-red-600">
+                    <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                       {formatCurrency(monthlyExpenses)}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -172,13 +172,13 @@ export default function Index() {
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Active Goals</CardTitle>
-                    <Target className="h-4 w-4 text-blue-600" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Active Goals</CardTitle>
+                    <Target className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                       {activeGoals}
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -190,37 +190,37 @@ export default function Index() {
 
               {/* Quick Stats Row */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Loans Given</CardTitle>
-                    <CreditCard className="h-4 w-4 text-orange-600" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Loans Given</CardTitle>
+                    <CreditCard className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-xl font-bold text-orange-600">
+                    <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
                       {formatCurrency(totalLoansGiven)}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Loans Taken</CardTitle>
-                    <CreditCard className="h-4 w-4 text-purple-600" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Loans Taken</CardTitle>
+                    <CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-xl font-bold text-purple-600">
+                    <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
                       {formatCurrency(totalLoansTaken)}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-border bg-card hover:shadow-lg transition-shadow">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Financial Users</CardTitle>
-                    <UsersIcon className="h-4 w-4 text-gray-600" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Financial Users</CardTitle>
+                    <UsersIcon className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-xl font-bold text-gray-600">
+                    <div className="text-xl font-bold text-foreground">
                       {users.length}
                     </div>
                   </CardContent>
@@ -228,9 +228,9 @@ export default function Index() {
               </div>
 
               {/* Recent Transactions */}
-              <Card>
+              <Card className="border-border bg-card">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-card-foreground">
                     <Calendar className="h-5 w-5" />
                     Recent Transactions
                   </CardTitle>
@@ -239,25 +239,25 @@ export default function Index() {
                   {recentTransactions.length > 0 ? (
                     <div className="space-y-3">
                       {recentTransactions.map((transaction) => (
-                        <div key={transaction.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div key={transaction.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
                           <div className="flex items-center gap-3">
                             <div className={`w-2 h-2 rounded-full ${
                               transaction.type === 'income' ? 'bg-green-500' : 'bg-red-500'
                             }`} />
                             <div>
-                              <p className="font-medium">{transaction.description}</p>
-                              <p className="text-sm text-gray-600">
+                              <p className="font-medium text-foreground">{transaction.description}</p>
+                              <p className="text-sm text-muted-foreground">
                                 {users.find(u => u.id === transaction.userId)?.name} • {transaction.category}
                               </p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className={`font-medium ${
-                              transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                              transaction.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                             }`}>
                               {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
                             </p>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-sm text-muted-foreground">
                               {new Date(transaction.date).toLocaleDateString()}
                             </p>
                           </div>
@@ -265,7 +265,7 @@ export default function Index() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-gray-500">
+                    <div className="text-center py-8 text-muted-foreground">
                       <PieChart className="h-12 w-12 mx-auto mb-4 opacity-50" />
                       <p>No transactions yet</p>
                       <Button
@@ -282,26 +282,26 @@ export default function Index() {
 
               {/* Admin Section */}
               {isAdminUser && (
-                <Card>
+                <Card className="border-border bg-card">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 text-card-foreground">
                       <UsersIcon className="h-5 w-5" />
                       Admin Overview
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="text-center p-4 bg-blue-50 rounded-lg">
-                        <p className="text-2xl font-bold text-blue-600">{users.length}</p>
-                        <p className="text-sm text-blue-700">Financial Users</p>
+                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+                        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{users.length}</p>
+                        <p className="text-sm text-blue-700 dark:text-blue-300">Financial Users</p>
                       </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <p className="text-2xl font-bold text-green-600">{transactions.length}</p>
-                        <p className="text-sm text-green-700">Total Transactions</p>
+                      <div className="text-center p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{transactions.length}</p>
+                        <p className="text-sm text-green-700 dark:text-green-300">Total Transactions</p>
                       </div>
-                      <div className="text-center p-4 bg-purple-50 rounded-lg">
-                        <p className="text-2xl font-bold text-purple-600">{categories.length}</p>
-                        <p className="text-sm text-purple-700">Categories</p>
+                      <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{categories.length}</p>
+                        <p className="text-sm text-purple-700 dark:text-purple-300">Categories</p>
                       </div>
                     </div>
                   </CardContent>

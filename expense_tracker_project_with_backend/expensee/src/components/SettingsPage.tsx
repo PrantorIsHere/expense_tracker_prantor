@@ -43,6 +43,7 @@ interface AppSettings {
   theme: string;
   notifications: boolean;
   autoBackup: boolean;
+  softwareName?: string;
 }
 
 export default function SettingsPage({ onDataChange }: SettingsPageProps) {
@@ -51,7 +52,8 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     dateFormat: 'MM/DD/YYYY',
     theme: 'light',
     notifications: true,
-    autoBackup: false
+    autoBackup: false,
+    softwareName: 'Expense Tracker'
   });
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -66,8 +68,11 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   }, []);
 
   const loadSettings = () => {
-    const loadedSettings = getSettings();
-    setSettings(loadedSettings);
+    const loadedSettings = getSettings() as AppSettings;
+    setSettings({
+      ...loadedSettings,
+      softwareName: loadedSettings.softwareName || 'Expense Tracker'
+    });
   };
 
   const loadCategories = () => {
@@ -228,6 +233,17 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <Label htmlFor="softwareName">Software Name</Label>
+                  <Input
+                    id="softwareName"
+                    value={settings.softwareName}
+                    onChange={(e) => setSettings({ ...settings, softwareName: e.target.value })}
+                    placeholder="Enter software name"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">This name will appear on vouchers and reports</p>
+                </div>
+
                 <div>
                   <Label htmlFor="currency">Currency</Label>
                   <Select value={settings.currency} onValueChange={(value) => setSettings({ ...settings, currency: value })}>
