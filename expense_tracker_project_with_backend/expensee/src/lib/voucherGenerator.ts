@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import JsBarcode from 'jsbarcode';
 import { Transaction, User, Category } from '@/types';
 import { getSettings } from './storage';
 
@@ -47,14 +48,27 @@ function formatAmount(n: number): string {
   return `${currency} ${n.toFixed(2)}`;
 }
 
+// Generate barcode as data URL
+function generateBarcode(text: string): string {
+  const canvas = document.createElement('canvas');
+  JsBarcode(canvas, text, {
+    format: 'CODE128',
+    width: 2,
+    height: 50,
+    displayValue: false,
+    margin: 0
+  });
+  return canvas.toDataURL('image/png');
+}
+
 export const generateVoucherPDF = (
   transaction: Transaction,
   user: User,
   category: Category
 ) => {
-  // A5 size: 148mm x 210mm
+  // A5 size landscape: 210mm x 148mm
   const pdf = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
     format: 'a5'
   });
@@ -63,59 +77,70 @@ export const generateVoucherPDF = (
   const pageHeight = pdf.internal.pageSize.getHeight();
   const softwareName = getSoftwareName();
 
-  // Colors
-  const primaryBlue = [41, 128, 185];
-  const darkGrey = [52, 73, 94];
-  const lightGrey = [236, 240, 241];
+  // Colors - professional dark green/navy
+  const darkGreen = [0, 77, 64];
+  const lightGrey = [245, 245, 245];
+  const borderGrey = [200, 200, 200];
 
-  // Header background
-  pdf.setFillColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
-  pdf.rect(0, 0, pageWidth, 35, 'F');
-
-  // Software name in header
-  pdf.setTextColor(255, 255, 255);
+  // Top Section - Title centered
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(18);
-  pdf.text(softwareName, pageWidth / 2, 15, { align: 'center' });
+  pdf.setFontSize(20);
+  pdf.setTextColor(darkGreen[0], darkGreen[1], darkGreen[2]);
+  pdf.text('CASH VOUCHER', pageWidth / 2, 15, { align: 'center' });
 
+  // Top-right corner - Company name
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(12);
-  pdf.text('PAYMENT VOUCHER', pageWidth / 2, 25, { align: 'center' });
+  pdf.setFontSize(11);
+  pdf.setTextColor(50, 50, 50);
+  pdf.text(softwareName, pageWidth - 15, 12, { align: 'right' });
 
-  // Voucher info section
-  pdf.setTextColor(darkGrey[0], darkGrey[1], darkGrey[2]);
+  // Left-top corner - Barcode
+  try {
+    const barcodeDataUrl = generateBarcode(transaction.voucherId);
+    pdf.addImage(barcodeDataUrl, 'PNG', 15, 20, 40, 12);
+  } catch (e) {
+    console.error('Barcode generation failed:', e);
+  }
+
+  // Voucher ID text under barcode
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.text(`Voucher ID: ${transaction.voucherId}`, 15, 50);
-  pdf.text(`Date: ${new Date(transaction.date).toLocaleDateString()}`, pageWidth - 15, 50, { align: 'right' });
+  pdf.setFontSize(8);
+  pdf.setTextColor(80, 80, 80);
+  pdf.text(`Voucher ID: ${transaction.voucherId}`, 15, 35);
 
-  // Transaction details table
+  // Date on right side
+  pdf.text(`Date: ${new Date(transaction.date).toLocaleDateString()}`, pageWidth - 15, 35, { align: 'right' });
+
+  // Main Body Table
+  const startY = 45;
+  
+  // Table data with proper structure
   const tableData = [
-    ['Pay To', user.name],
+    ['Transaction Type', transaction.type.replace('_', ' ').toUpperCase()],
     ['Amount', formatAmount(transaction.amount)],
-    ['Purpose', transaction.title],
-    ['Category', category.name],
-    ['Type', transaction.type.replace('_', ' ').toUpperCase()]
+    ['To', user.name],
+    ['Description / Details', transaction.title]
   ];
 
   autoTable(pdf, {
-    startY: 60,
+    startY: startY,
     head: [],
     body: tableData,
     theme: 'grid',
     styles: {
-      fontSize: 11,
-      cellPadding: 4,
-      lineColor: [200, 200, 200],
-      lineWidth: 0.3,
+      fontSize: 10,
+      cellPadding: 3.5,
+      lineColor: borderGrey,
+      lineWidth: 0.2,
       font: 'helvetica',
+      textColor: [40, 40, 40]
     },
     columnStyles: {
       0: { 
         halign: 'left', 
         fontStyle: 'bold',
-        cellWidth: 45,
-        fillColor: [245, 245, 245]
+        cellWidth: 50,
+        fillColor: lightGrey
       },
       1: { 
         halign: 'left',
@@ -123,31 +148,33 @@ export const generateVoucherPDF = (
       }
     },
     margin: { left: 15, right: 15 },
+    didParseCell: function(data) {
+      // Make Description row taller
+      if (data.row.index === 3) {
+        data.cell.styles.minCellHeight = 20;
+        data.cell.styles.valign = 'top';
+      }
+    }
   });
 
-  // Footer note
-  const finalY = (pdf.lastAutoTable?.finalY ?? 60) + 15;
-  pdf.setFont('helvetica', 'italic');
-  pdf.setFontSize(9);
-  pdf.setTextColor(120, 120, 120);
-  pdf.text('This is a system-generated voucher. No signature required.', pageWidth / 2, finalY, { align: 'center' });
+  // Bottom Section - Signature lines
+  const finalY = (pdf.lastAutoTable?.finalY ?? startY) + 15;
+  const signatureY = pageHeight - 25;
 
-  // Authorized signature section
-  const signatureY = pageHeight - 40;
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(10);
-  pdf.setTextColor(darkGrey[0], darkGrey[1], darkGrey[2]);
-  
-  // Signature lines
-  pdf.line(20, signatureY, 60, signatureY);
-  pdf.line(pageWidth - 60, signatureY, pageWidth - 20, signatureY);
-  
-  pdf.setFontSize(9);
-  pdf.text('Prepared By', 40, signatureY + 6, { align: 'center' });
-  pdf.text('Authorized By', pageWidth - 40, signatureY + 6, { align: 'center' });
+  pdf.setTextColor(40, 40, 40);
 
-  // Border
-  pdf.setDrawColor(darkGrey[0], darkGrey[1], darkGrey[2]);
+  // Left side - Approved By
+  pdf.line(20, signatureY, 70, signatureY);
+  pdf.text('Approved By:', 20, signatureY + 6);
+
+  // Right side - Signature
+  pdf.line(pageWidth - 70, signatureY, pageWidth - 20, signatureY);
+  pdf.text('Signature:', pageWidth - 70, signatureY + 6);
+
+  // Border around entire voucher
+  pdf.setDrawColor(darkGreen[0], darkGreen[1], darkGreen[2]);
   pdf.setLineWidth(0.5);
   pdf.rect(5, 5, pageWidth - 10, pageHeight - 10);
 

@@ -188,7 +188,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
 
   // Generate page numbers for pagination
   const getPageNumbers = () => {
-    const pageNumbers = [];
+    const pageNumbers: number[] = [];
     const maxVisiblePages = 5;
     
     if (totalPages <= maxVisiblePages) {
@@ -197,7 +197,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       }
     } else {
       let startPage = Math.max(1, currentPage - 2);
-      let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+      const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
       
       if (endPage - startPage < maxVisiblePages - 1) {
         startPage = Math.max(1, endPage - maxVisiblePages + 1);
