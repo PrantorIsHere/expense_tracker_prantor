@@ -20,7 +20,7 @@ import {
 } from '@/lib/storage';
 import { SUPPORTED_CURRENCIES } from '@/lib/currencyUtils';
 import UsersTab from './UsersTab';
-import { User, Category } from '@/types';
+import { User, Category } from '@/components/types';
 import { 
   Settings, 
   Users, 
