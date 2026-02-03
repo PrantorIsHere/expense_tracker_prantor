@@ -17,8 +17,9 @@ import {
   formatCurrency 
 } from '@/lib/storage';
 import { downloadVoucher } from '@/lib/voucherGenerator';
-import { Transaction, User, Category } from '@/types';
-import { Plus, Edit, Trash2, Download, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { downloadMonthlyStatement } from '@/lib/monthlyStatementPDF';
+import { Transaction, User, Category } from '@/components/types';
+import { Plus, Edit, Trash2, Download, Search, Filter, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 
 interface TransactionManagerProps {
   onDataChange: () => void;
@@ -40,6 +41,10 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+
+  // Monthly statement state
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
 
   const [formData, setFormData] = useState({
     title: '',
@@ -140,6 +145,24 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     }
   };
 
+  const handleDownloadMonthlyStatement = () => {
+    const month = parseInt(selectedMonth);
+    const year = parseInt(selectedYear);
+    
+    // Filter transactions for selected month and year
+    const monthlyTransactions = transactions.filter(t => {
+      const transDate = new Date(t.date);
+      return transDate.getMonth() === month && transDate.getFullYear() === year;
+    });
+
+    if (monthlyTransactions.length === 0) {
+      alert('No transactions found for the selected month and year.');
+      return;
+    }
+
+    downloadMonthlyStatement(monthlyTransactions, users, categories, month, year);
+  };
+
   const getFilteredTransactions = () => {
     return transactions.filter(transaction => {
       const matchesSearch = 
@@ -210,6 +233,11 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     
     return pageNumbers;
   };
+
+  // Generate month and year options
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
 
   return (
     <div className="space-y-6">
@@ -366,6 +394,57 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Monthly Statement Download */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <FileText className="mr-2 h-4 w-4" />
+            Download Monthly Statement
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-4">
+            <div className="flex-1">
+              <Label htmlFor="statementMonth">Month</Label>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger id="statementMonth">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthNames.map((month, index) => (
+                    <SelectItem key={index} value={index.toString()}>
+                      {month}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <Label htmlFor="statementYear">Year</Label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger id="statementYear">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleDownloadMonthlyStatement} className="flex-shrink-0">
+              <Download className="mr-2 h-4 w-4" />
+              Download Statement PDF
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            Generate a bank-style monthly statement for all transactions in the selected period.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card>

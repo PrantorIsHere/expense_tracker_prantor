@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
-import { Transaction, User, Category } from '@src/lib/types';
+import { Transaction, User, Category } from '@/components/types';
 import { getSettings } from './storage';
 
 // Augment jsPDF type to include lastAutoTable from jspdf-autotable
