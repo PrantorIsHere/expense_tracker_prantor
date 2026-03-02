@@ -3,10 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import Sidebar from '@/components/Sidebar';
 import TransactionManager from '@/components/TransactionManager';
 import ReportsPage from '@/components/ReportsPage';
 import LoansManager from '@/components/LoansManager';
+import GoalsManager from '@/components/GoalsManager';
 import SettingsPage from '@/components/SettingsPage';
 import UsersTab from '@/components/UsersTab';
 import UserHeader from '@/components/UserHeader';
@@ -22,11 +24,9 @@ import {
   Target,
   PieChart,
   Calendar,
-  CreditCard,
   ArrowUpRight,
   ArrowDownRight,
-  HandCoins,
-  Wallet
+  PiggyBank,
 } from 'lucide-react';
 
 export default function Index() {
@@ -91,10 +91,22 @@ export default function Index() {
 
   const netPosition = outstandingGiven - outstandingTaken;
 
-  const completedGoals = goals.filter(g => g.currentAmount >= g.targetAmount).length;
-  const activeGoals = goals.filter(g => g.currentAmount < g.targetAmount).length;
+  // Goals calculations
+  const activeGoals = goals.filter(g => g.status === 'active');
+  const completedGoals = goals.filter(g => g.status === 'completed');
+  const totalGoalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
+  const totalGoalSaved = activeGoals.reduce((sum, g) => sum + g.currentAmount, 0);
+  const overallGoalProgress = totalGoalTarget > 0 ? (totalGoalSaved / totalGoalTarget) * 100 : 0;
 
-  const recentTransactions = transactions
+  // Daily savings rate (last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const recentTransactions = transactions.filter(t => new Date(t.date) >= thirtyDaysAgo);
+  const recentIncome = recentTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const recentExpenses = recentTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const dailySavings = (recentIncome - recentExpenses) / 30;
+
+  const recentTransactionsList = transactions
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
@@ -110,6 +122,7 @@ export default function Index() {
               <h1 className="text-3xl font-bold gradient-text">
                 {activeTab === 'dashboard' && '📊 Dashboard'}
                 {activeTab === 'transactions' && '💳 Transaction Manager'}
+                {activeTab === 'goals' && '🎯 Savings Goals'}
                 {activeTab === 'reports' && '📈 Financial Reports'}
                 {activeTab === 'loans' && '💰 Loans Manager'}
                 {activeTab === 'users' && '👥 User Management'}
@@ -119,6 +132,7 @@ export default function Index() {
               <p className="text-muted-foreground mt-1 text-sm">
                 {activeTab === 'dashboard' && `Welcome back, ${session?.username}! Here's your financial overview.`}
                 {activeTab === 'transactions' && 'Manage your income and expenses'}
+                {activeTab === 'goals' && 'Track your savings goals and smart insights'}
                 {activeTab === 'reports' && 'Analyze your financial data'}
                 {activeTab === 'loans' && 'Track loans given and taken'}
                 {activeTab === 'users' && 'Manage account users and financial users'}
@@ -248,21 +262,48 @@ export default function Index() {
                 </Card>
               </div>
 
-              {/* Quick Stats Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="border-border bg-gradient-to-br from-blue-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate">
+              {/* Goals Overview + Quick Stats Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card className="border-border bg-gradient-to-br from-purple-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate cursor-pointer" onClick={() => setActiveTab('goals')}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Active Goals</CardTitle>
-                    <div className="p-2 rounded-lg bg-blue-500/10">
-                      <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <CardTitle className="text-sm font-medium text-card-foreground">Savings Goals</CardTitle>
+                    <div className="p-2 rounded-lg bg-purple-500/10">
+                      <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {activeGoals}
+                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {activeGoals.length} Active
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {completedGoals.length} completed
+                    </p>
+                    {activeGoals.length > 0 && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span>{formatCurrency(totalGoalSaved)}</span>
+                          <span className="text-muted-foreground">{formatCurrency(totalGoalTarget)}</span>
+                        </div>
+                        <Progress value={overallGoalProgress} className="h-2" />
+                        <p className="text-xs text-muted-foreground mt-1">{overallGoalProgress.toFixed(1)}% overall</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-gradient-to-br from-orange-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-card-foreground">Daily Savings Rate</CardTitle>
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <PiggyBank className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className={`text-2xl font-bold ${dailySavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {formatCurrency(Math.abs(dailySavings))}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      {completedGoals} completed goals
+                      {dailySavings >= 0 ? 'saving' : 'overspending'} per day (avg 30d)
                     </p>
                   </CardContent>
                 </Card>
@@ -302,6 +343,66 @@ export default function Index() {
                 </Card>
               </div>
 
+              {/* Top Active Goals on Dashboard */}
+              {activeGoals.length > 0 && (
+                <Card className="border-border bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-card-foreground">
+                        <Target className="h-5 w-5 text-purple-600" />
+                        Active Savings Goals
+                      </CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => setActiveTab('goals')}>
+                        View All
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {activeGoals.slice(0, 3).map((goal) => {
+                        const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                        const remaining = goal.targetAmount - goal.currentAmount;
+                        const deadlineDate = new Date(goal.deadline);
+                        const now = new Date();
+                        const daysRemaining = Math.max(0, Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                        const dailyNeeded = daysRemaining > 0 ? remaining / daysRemaining : remaining;
+
+                        return (
+                          <div key={goal.id} className="p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-xl border border-border/50 hover:shadow-md transition-all duration-300">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <Target className="h-4 w-4 text-purple-600" />
+                                <span className="font-semibold">{goal.title}</span>
+                              </div>
+                              <Badge variant={
+                                goal.priority === 'high' ? 'destructive' :
+                                goal.priority === 'medium' ? 'default' : 'secondary'
+                              }>
+                                {goal.priority}
+                              </Badge>
+                            </div>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span>{formatCurrency(goal.currentAmount)}</span>
+                              <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
+                            </div>
+                            <Progress value={Math.min(progress, 100)} className="h-2 mb-2" />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>{progress.toFixed(1)}% • {formatCurrency(remaining)} remaining</span>
+                              <span>
+                                {daysRemaining > 0
+                                  ? `${daysRemaining}d left • ${formatCurrency(dailyNeeded)}/day`
+                                  : 'Deadline passed'
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Recent Transactions */}
               <Card className="border-border bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
                 <CardHeader>
@@ -311,9 +412,9 @@ export default function Index() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {recentTransactions.length > 0 ? (
+                  {recentTransactionsList.length > 0 ? (
                     <div className="space-y-3">
-                      {recentTransactions.map((transaction, index) => (
+                      {recentTransactionsList.map((transaction, index) => (
                         <div 
                           key={transaction.id} 
                           className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-xl hover:from-muted hover:to-muted/50 transition-all duration-300 border border-border/50 hover-lift"
@@ -324,9 +425,9 @@ export default function Index() {
                               transaction.type === 'income' ? 'bg-green-500 pulse-subtle' : 'bg-red-500 pulse-subtle'
                             }`} />
                             <div>
-                              <p className="font-semibold text-foreground">{transaction.description}</p>
+                              <p className="font-semibold text-foreground">{transaction.title}</p>
                               <p className="text-sm text-muted-foreground">
-                                {users.find(u => u.id === transaction.userId)?.name} • {transaction.category}
+                                {users.find(u => u.id === transaction.userId)?.name} • {categories.find(c => c.id === transaction.categoryId)?.name}
                               </p>
                             </div>
                           </div>
@@ -370,7 +471,7 @@ export default function Index() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="text-center p-6 bg-gradient-to-br from-blue-500/20 to-blue-500/5 rounded-xl border border-blue-500/20 hover-lift">
                         <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{users.length}</p>
                         <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">Financial Users</p>
@@ -380,8 +481,12 @@ export default function Index() {
                         <p className="text-sm text-green-700 dark:text-green-300 mt-1">Total Transactions</p>
                       </div>
                       <div className="text-center p-6 bg-gradient-to-br from-purple-500/20 to-purple-500/5 rounded-xl border border-purple-500/20 hover-lift">
-                        <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{categories.length}</p>
-                        <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">Categories</p>
+                        <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{goals.length}</p>
+                        <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">Savings Goals</p>
+                      </div>
+                      <div className="text-center p-6 bg-gradient-to-br from-orange-500/20 to-orange-500/5 rounded-xl border border-orange-500/20 hover-lift">
+                        <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">{categories.length}</p>
+                        <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">Categories</p>
                       </div>
                     </div>
                   </CardContent>
@@ -391,6 +496,10 @@ export default function Index() {
 
             <TabsContent value="transactions">
               <TransactionManager onDataChange={loadData} />
+            </TabsContent>
+
+            <TabsContent value="goals">
+              <GoalsManager onDataChange={loadData} />
             </TabsContent>
 
             <TabsContent value="reports">

@@ -41,11 +41,14 @@ export interface Loan {
 export interface Goal {
   id: string;
   title: string;
+  description?: string;
   targetAmount: number;
   currentAmount: number;
   deadline: string;
+  priority: 'low' | 'medium' | 'high';
   status: 'active' | 'completed' | 'paused';
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface AppSettings {

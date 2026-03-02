@@ -10,6 +10,7 @@ import {
   X,
   Banknote,
   Info,
+  Target,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -23,6 +24,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
+    { id: 'goals', label: 'Goals', icon: Target },
     { id: 'reports', label: 'Reports', icon: TrendingUp },
     { id: 'loans', label: 'Loans', icon: Banknote },
     { id: 'users', label: 'Users', icon: Users },

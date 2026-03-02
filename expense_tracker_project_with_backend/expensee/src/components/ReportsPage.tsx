@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { getTransactions, getCategories, getUsers, getLoans, formatCurrency } from '@/lib/storage';
-import { Transaction, Category, User, Loan } from '@/types';
+import { Progress } from '@/components/ui/progress';
+import { getTransactions, getCategories, getUsers, getLoans, getGoals, formatCurrency } from '@/lib/storage';
+import { Transaction, Category, User, Loan, Goal } from '@/components/types';
 import {
   BarChart,
   Bar,
@@ -19,7 +20,7 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText, PiggyBank } from 'lucide-react';
 import { generateCategoryBreakdownPDF } from '@/lib/lib/categoryBreakdownPDF';
 
 export default function ReportsPage() {
@@ -27,12 +28,14 @@ export default function ReportsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
 
   useEffect(() => {
     setTransactions(getTransactions());
     setCategories(getCategories());
     setUsers(getUsers());
     setLoans(getLoans());
+    setGoals(getGoals());
   }, []);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82ca9d', '#ef4444', '#10b981', '#6366f1', '#f59e0b'];
@@ -138,7 +141,7 @@ export default function ReportsPage() {
     [categoryStats]
   );
 
-  // Category performance for current month — top categories by expense, include income for comparison
+  // Category performance for current month
   const categoryPerformanceMonthly = useMemo(() => {
     const perCat = categories.map((cat) => {
       const catTxs = currentMonthTransactions.filter((t) => t.categoryId === cat.id);
@@ -147,7 +150,6 @@ export default function ReportsPage() {
       return { name: cat.name, income, expense, color: cat.color };
     });
 
-    // Top 10 by expense
     return perCat
       .filter((c) => c.expense > 0 || c.income > 0)
       .sort((a, b) => b.expense - a.expense)
@@ -195,6 +197,34 @@ export default function ReportsPage() {
 
     return { totalTransactions, monthlyTransactions, avgDailySpending, activeUsers };
   };
+
+  // Goals summary for reports
+  const goalsSummary = useMemo(() => {
+    const activeGoals = goals.filter(g => g.status === 'active');
+    const completedGoals = goals.filter(g => g.status === 'completed');
+    const totalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
+    const totalSaved = activeGoals.reduce((sum, g) => sum + g.currentAmount, 0);
+    const overallProgress = totalTarget > 0 ? (totalSaved / totalTarget) * 100 : 0;
+
+    // Daily savings rate
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentTxs = transactions.filter(t => new Date(t.date) >= thirtyDaysAgo);
+    const recentIncome = recentTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const recentExpenses = recentTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const dailySavings = (recentIncome - recentExpenses) / 30;
+
+    return {
+      total: goals.length,
+      active: activeGoals.length,
+      completed: completedGoals.length,
+      totalTarget,
+      totalSaved,
+      overallProgress,
+      dailySavings,
+      activeGoals,
+    };
+  }, [goals, transactions]);
 
   const monthSummary = getCurrentMonthData();
   const loansSummary = getLoansSummary();
@@ -251,6 +281,77 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Goals Summary in Reports */}
+      {goalsSummary.total > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PiggyBank className="h-5 w-5 text-purple-600" />
+              Savings Goals Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                <p className="text-2xl font-bold text-purple-600">{goalsSummary.active}</p>
+                <p className="text-xs text-muted-foreground">Active Goals</p>
+              </div>
+              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <p className="text-2xl font-bold text-green-600">{goalsSummary.completed}</p>
+                <p className="text-xs text-muted-foreground">Completed</p>
+              </div>
+              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p className="text-2xl font-bold text-blue-600">{goalsSummary.overallProgress.toFixed(1)}%</p>
+                <p className="text-xs text-muted-foreground">Overall Progress</p>
+              </div>
+              <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                <p className={`text-2xl font-bold ${goalsSummary.dailySavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(Math.abs(goalsSummary.dailySavings))}
+                </p>
+                <p className="text-xs text-muted-foreground">Daily Savings Rate</p>
+              </div>
+            </div>
+
+            {goalsSummary.activeGoals.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold">Active Goals Progress</h3>
+                {goalsSummary.activeGoals.map(goal => {
+                  const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                  const remaining = goal.targetAmount - goal.currentAmount;
+                  const deadlineDate = new Date(goal.deadline);
+                  const daysRemaining = Math.max(0, Math.ceil((deadlineDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+                  const dailyNeeded = daysRemaining > 0 ? remaining / daysRemaining : remaining;
+                  const isOnTrack = goalsSummary.dailySavings >= dailyNeeded;
+
+                  return (
+                    <div key={goal.id} className="p-3 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">{goal.title}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={isOnTrack ? 'default' : 'destructive'} className="text-xs">
+                            {isOnTrack ? 'On Track' : 'Behind'}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{daysRemaining}d left</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>{formatCurrency(goal.currentAmount)}</span>
+                        <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
+                      </div>
+                      <Progress value={Math.min(progress, 100)} className="h-2 mb-1" />
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{progress.toFixed(1)}%</span>
+                        <span>Need {formatCurrency(dailyNeeded)}/day</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
