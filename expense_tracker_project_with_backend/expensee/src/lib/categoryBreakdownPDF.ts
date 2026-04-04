@@ -2,7 +2,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getTransactions, getCategories } from './storage';
 
-// Augment jsPDF type to include lastAutoTable from jspdf-autotable
 declare module 'jspdf' {
   interface jsPDF {
     lastAutoTable?: {
@@ -23,7 +22,6 @@ interface CategoryStat {
   pctExpense: number;
 }
 
-// Get currency code from localStorage
 function getCurrencyCode(): string {
   try {
     const settings = localStorage.getItem('expense-tracker-settings');
@@ -31,13 +29,12 @@ function getCurrencyCode(): string {
       const parsed = JSON.parse(settings);
       return parsed.currency || 'BDT';
     }
-  } catch (e) {
-    // ignore
+  } catch {
+    // ignore malformed data and use fallback
   }
   return 'BDT';
 }
 
-// Format amount without commas, just plain number with currency code
 function formatAmount(n: number): string {
   const currency = getCurrencyCode();
   return `${currency} ${n.toFixed(2)}`;
@@ -49,18 +46,15 @@ export function generateCategoryBreakdownPDF() {
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 40;
 
-  // Colors (professional fintech palette)
-  const primaryBlue = [41, 128, 185]; // #2980b9
-  const darkGrey = [52, 73, 94]; // #34495e
-  const lightGrey = [236, 240, 241]; // #ecf0f1
-  const greenIncome = [39, 174, 96]; // #27ae60
-  const redExpense = [231, 76, 60]; // #e74c3c
+  const primaryBlue = [41, 128, 185];
+  const darkGrey = [52, 73, 94];
+  const lightGrey = [236, 240, 241];
+  const greenIncome = [39, 174, 96];
+  const redExpense = [231, 76, 60];
 
-  // Header background
   doc.setFillColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
   doc.rect(0, 0, pageWidth, 120, 'F');
 
-  // Logo placeholder (you can replace with actual logo)
   doc.setFillColor(255, 255, 255);
   doc.circle(margin + 20, 50, 20, 'F');
   doc.setTextColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
@@ -68,7 +62,6 @@ export function generateCategoryBreakdownPDF() {
   doc.setFontSize(16);
   doc.text('ET', margin + 20, 55, { align: 'center' });
 
-  // Header title
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
@@ -78,22 +71,19 @@ export function generateCategoryBreakdownPDF() {
   doc.setFontSize(11);
   doc.text('Category-wise Financial Breakdown', margin + 60, 65);
 
-  // Report info card
   const cardX = margin;
   const cardY = 140;
   const cardWidth = pageWidth - margin * 2;
   const cardHeight = 80;
 
-  // Card background with shadow effect
   doc.setFillColor(250, 250, 250);
-  doc.roundedRect(cardX + 2, cardY + 2, cardWidth, cardHeight, 3, 3, 'F'); // shadow
+  doc.roundedRect(cardX + 2, cardY + 2, cardWidth, cardHeight, 3, 3, 'F');
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 3, 3, 'F');
   doc.setDrawColor(lightGrey[0], lightGrey[1], lightGrey[2]);
   doc.setLineWidth(1);
   doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 3, 3, 'S');
 
-  // Card content
   doc.setTextColor(darkGrey[0], darkGrey[1], darkGrey[2]);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -102,21 +92,23 @@ export function generateCategoryBreakdownPDF() {
   doc.text('Period:', cardX + 20, cardY + 65);
 
   doc.setFont('helvetica', 'normal');
-  doc.text(new Date().toLocaleString('en-US', { 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }), cardX + 140, cardY + 25);
+  doc.text(
+    new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    cardX + 140,
+    cardY + 25
+  );
   doc.text('Category-wise Breakdown (All Time)', cardX + 140, cardY + 50);
   doc.text('All Transactions', cardX + 140, cardY + 65);
 
-  // Get data
   const transactions = getTransactions();
   const categories = getCategories();
 
-  // Build category stats
   const stats = categories.map((cat) => {
     const catTxs = transactions.filter((t) => t.categoryId === cat.id);
     const income = catTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -125,7 +117,7 @@ export function generateCategoryBreakdownPDF() {
     return {
       id: cat.id,
       name: cat.name,
-      color: cat.color,
+      color: cat.color || '#94a3b8',
       income,
       expense,
       net: income - expense,
@@ -145,7 +137,6 @@ export function generateCategoryBreakdownPDF() {
     .filter((s) => s.income > 0 || s.expense > 0)
     .sort((a, b) => b.expense - a.expense);
 
-  // Table data
   const tableBody = categoryStats.map((s) => [
     s.name,
     formatAmount(s.income),
@@ -157,21 +148,10 @@ export function generateCategoryBreakdownPDF() {
     String(s.count),
   ]);
 
-  // Add totals row
-  tableBody.push([
-    'TOTAL',
-    formatAmount(totalIncome),
-    formatAmount(totalExpense),
-    '',
-    '',
-    '',
-    '',
-    '',
-  ]);
+  tableBody.push(['TOTAL', formatAmount(totalIncome), formatAmount(totalExpense), '', '', '', '', '']);
 
   let startY = cardY + cardHeight + 30;
 
-  // Section title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.setTextColor(darkGrey[0], darkGrey[1], darkGrey[2]);
@@ -179,9 +159,8 @@ export function generateCategoryBreakdownPDF() {
 
   startY += 20;
 
-  // Modern table
   autoTable(doc, {
-    startY: startY,
+    startY,
     head: [['Category', 'Income', 'Expense', 'Net', 'Status', '% Income', '% Expense', 'Txns']],
     body: tableBody,
     theme: 'grid',
@@ -217,7 +196,6 @@ export function generateCategoryBreakdownPDF() {
       font: 'helvetica',
     },
     didParseCell: (data) => {
-      // Bold and highlight totals row
       if (data.row.index === tableBody.length - 1) {
         data.cell.styles.fontStyle = 'bold';
         data.cell.styles.fillColor = [240, 240, 240];
@@ -229,20 +207,16 @@ export function generateCategoryBreakdownPDF() {
   });
 
   const finalY = (doc.lastAutoTable?.finalY ?? startY) + 30;
-
-  // Summary section
   const summaryY = finalY < pageHeight - 180 ? finalY : pageHeight - 180;
-  
+
   if (summaryY + 150 > pageHeight - margin) {
     doc.addPage();
-    drawSummarySection(doc, margin, margin, totalIncome, totalExpense, primaryBlue, greenIncome, redExpense, darkGrey, lightGrey);
+    drawSummarySection(doc, margin, margin, totalIncome, totalExpense, greenIncome, redExpense, darkGrey, lightGrey);
   } else {
-    drawSummarySection(doc, margin, summaryY, totalIncome, totalExpense, primaryBlue, greenIncome, redExpense, darkGrey, lightGrey);
+    drawSummarySection(doc, margin, summaryY, totalIncome, totalExpense, greenIncome, redExpense, darkGrey, lightGrey);
   }
 
-  // Add page numbers
   addPageNumbers(doc, margin, darkGrey);
-
   doc.save('Category_Breakdown_Report.pdf');
 }
 
@@ -252,7 +226,6 @@ function drawSummarySection(
   y: number,
   totalIncome: number,
   totalExpense: number,
-  primaryBlue: number[],
   greenIncome: number[],
   redExpense: number[],
   darkGrey: number[],
@@ -262,24 +235,20 @@ function drawSummarySection(
   const summaryWidth = pageWidth - x * 2;
   const summaryHeight = 140;
 
-  // Summary card background
   doc.setFillColor(250, 250, 250);
-  doc.roundedRect(x + 2, y + 2, summaryWidth, summaryHeight, 3, 3, 'F'); // shadow
+  doc.roundedRect(x + 2, y + 2, summaryWidth, summaryHeight, 3, 3, 'F');
   doc.setFillColor(255, 255, 255);
   doc.roundedRect(x, y, summaryWidth, summaryHeight, 3, 3, 'F');
   doc.setDrawColor(lightGrey[0], lightGrey[1], lightGrey[2]);
   doc.setLineWidth(1);
   doc.roundedRect(x, y, summaryWidth, summaryHeight, 3, 3, 'S');
 
-  // Summary title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(darkGrey[0], darkGrey[1], darkGrey[2]);
   doc.text('Financial Summary', x + 20, y + 25);
 
-  // Divider line
   doc.setDrawColor(lightGrey[0], lightGrey[1], lightGrey[2]);
-  doc.setLineWidth(1);
   doc.line(x + 20, y + 35, pageWidth - x - 20, y + 35);
 
   const boxWidth = 140;
@@ -287,42 +256,32 @@ function drawSummarySection(
   const boxStartX = x + 20;
   const row1Y = y + 55;
   const row2Y = y + 85;
-  const row3Y = y + 115;
 
-  // Helper function to draw number boxes
   const drawNumberBox = (boxX: number, boxY: number, label: string, value: string, color: number[]) => {
-    // Draw box
     doc.setDrawColor(220, 220, 220);
     doc.setLineWidth(0.5);
     doc.setFillColor(250, 250, 250);
     doc.roundedRect(boxX, boxY - 16, boxWidth, boxHeight, 2, 2, 'FD');
 
-    // Label
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 100, 100);
     doc.text(label, boxX + 5, boxY - 8);
 
-    // Value (right-aligned inside box)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(color[0], color[1], color[2]);
     doc.text(value, boxX + boxWidth - 5, boxY + 2, { align: 'right' });
   };
 
-  // Total Income box
   drawNumberBox(boxStartX, row1Y, 'Total Income', formatAmount(totalIncome), greenIncome);
-
-  // Total Expense box
   drawNumberBox(boxStartX + boxWidth + 15, row1Y, 'Total Expense', formatAmount(totalExpense), redExpense);
 
-  // Net Balance box
   const netBalance = totalIncome - totalExpense;
   const netColor = netBalance >= 0 ? greenIncome : redExpense;
   const netLabel = netBalance >= 0 ? 'Net Balance (Surplus)' : 'Net Balance (Deficit)';
   drawNumberBox(boxStartX, row2Y, netLabel, formatAmount(Math.abs(netBalance)), netColor);
 
-  // Footer note
   const footerY = y + summaryHeight + 20;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(9);
@@ -333,7 +292,7 @@ function drawSummarySection(
 
 function addPageNumbers(doc: jsPDF, margin: number, darkGrey: number[]) {
   const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
+  for (let i = 1; i <= pageCount; i += 1) {
     doc.setPage(i);
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();

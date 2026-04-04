@@ -21,7 +21,7 @@ import {
   Legend,
 } from 'recharts';
 import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText, PiggyBank } from 'lucide-react';
-import { generateCategoryBreakdownPDF } from '@/lib/lib/categoryBreakdownPDF';
+import { generateCategoryBreakdownPDF } from '@/lib/categoryBreakdownPDF';
 
 export default function ReportsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);

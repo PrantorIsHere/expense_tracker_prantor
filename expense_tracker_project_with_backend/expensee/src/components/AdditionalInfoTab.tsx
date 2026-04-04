@@ -22,9 +22,9 @@ import {
   saveRentHistory,
   type TransactionHistoryItem,
   type RentHistoryItem,
-} from '@/lib/lib/additionalInfoStorage';
+} from '@/lib/additionalInfoStorage';
 import { formatCurrency } from '@/lib/storage';
-import { generateTransactionReport, generateRentReport } from '../lib/additionalReports';
+import { generateTransactionReport, generateRentReport } from '@/lib/additionalReports';
 
 export default function AdditionalInfoTab() {
   const [txItems, setTxItems] = useState<TransactionHistoryItem[]>([]);

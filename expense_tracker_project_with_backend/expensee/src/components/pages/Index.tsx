@@ -21,12 +21,17 @@ import {
   TrendingUp,
   TrendingDown,
   Users as UsersIcon,
+  Receipt,
+  Settings,
+  Banknote,
+  Info,
   Target,
   PieChart,
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
   PiggyBank,
+  LayoutDashboard,
 } from 'lucide-react';
 
 export default function Index() {
@@ -112,6 +117,52 @@ export default function Index() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
+  const pageConfig = {
+    dashboard: {
+      title: 'Dashboard',
+      description: `Welcome back, ${session?.username}! Here's your financial overview.`,
+      icon: LayoutDashboard,
+    },
+    transactions: {
+      title: 'Transaction Manager',
+      description: 'Manage your income and expenses',
+      icon: Receipt,
+    },
+    goals: {
+      title: 'Savings Goals',
+      description: 'Track your savings goals and smart insights',
+      icon: Target,
+    },
+    reports: {
+      title: 'Financial Reports',
+      description: 'Analyze your financial data',
+      icon: TrendingUp,
+    },
+    loans: {
+      title: 'Loans Manager',
+      description: 'Track loans given and taken',
+      icon: Banknote,
+    },
+    users: {
+      title: 'User Management',
+      description: 'Manage account users and financial users',
+      icon: UsersIcon,
+    },
+    settings: {
+      title: 'Settings',
+      description: 'Configure your preferences',
+      icon: Settings,
+    },
+    additional: {
+      title: 'Additional Info',
+      description: 'Manage additional history and export combined PDF reports',
+      icon: Info,
+    },
+  } as const;
+
+  const currentPage = pageConfig[activeTab as keyof typeof pageConfig] ?? pageConfig.dashboard;
+  const CurrentPageIcon = currentPage.icon;
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-background via-background to-primary/5">
       <Sidebar
@@ -126,25 +177,16 @@ export default function Index() {
         <header className="bg-card/80 backdrop-blur-lg shadow-lg border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold gradient-text">
-                {activeTab === 'dashboard' && '📊 Dashboard'}
-                {activeTab === 'transactions' && '💳 Transaction Manager'}
-                {activeTab === 'goals' && '🎯 Savings Goals'}
-                {activeTab === 'reports' && '📈 Financial Reports'}
-                {activeTab === 'loans' && '💰 Loans Manager'}
-                {activeTab === 'users' && '👥 User Management'}
-                {activeTab === 'settings' && '⚙️ Settings'}
-                {activeTab === 'additional' && 'ℹ️ Additional Info'}
-              </h1>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <CurrentPageIcon className="h-6 w-6" />
+                </div>
+                <h1 className="text-3xl font-bold gradient-text">
+                  {currentPage.title}
+                </h1>
+              </div>
               <p className="text-muted-foreground mt-1 text-sm">
-                {activeTab === 'dashboard' && `Welcome back, ${session?.username}! Here's your financial overview.`}
-                {activeTab === 'transactions' && 'Manage your income and expenses'}
-                {activeTab === 'goals' && 'Track your savings goals and smart insights'}
-                {activeTab === 'reports' && 'Analyze your financial data'}
-                {activeTab === 'loans' && 'Track loans given and taken'}
-                {activeTab === 'users' && 'Manage account users and financial users'}
-                {activeTab === 'settings' && 'Configure your preferences'}
-                {activeTab === 'additional' && 'Manage additional history and export combined PDF reports'}
+                {currentPage.description}
               </p>
             </div>
             <UserHeader />
@@ -570,3 +612,4 @@ export default function Index() {
     </div>
   );
 }
+
