@@ -77,6 +77,8 @@ export default function Index() {
   const monthlyExpenses = thisMonthTransactions
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
+  const monthlySavings = monthlyIncome - monthlyExpenses;
+  const expenseRatio = monthlyIncome > 0 ? (monthlyExpenses / monthlyIncome) * 100 : 0;
 
   // Calculate loan statistics - ONLY PENDING LOANS (matching Loans page)
   const pendingLoans = loans.filter(l => l.status === 'pending');
@@ -112,7 +114,12 @@ export default function Index() {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        pendingLoansCount={pendingLoans.length}
+        activeGoalsCount={activeGoals.length}
+      />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
@@ -148,8 +155,8 @@ export default function Index() {
         <main className="flex-1 overflow-auto p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsContent value="dashboard" className="space-y-6">
-              {/* Financial Overview Cards - Top Row with 6 cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Financial Overview Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card className="border-border bg-gradient-to-br from-card to-card/50 hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/20 to-transparent rounded-full blur-3xl" />
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
@@ -203,6 +210,42 @@ export default function Index() {
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
                       <ArrowDownRight className="h-3 w-3" />
                       This month's spending
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-gradient-to-br from-emerald-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-500/20 to-transparent rounded-full blur-3xl" />
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+                    <CardTitle className="text-sm font-medium text-card-foreground">Monthly Savings</CardTitle>
+                    <div className="p-2 rounded-lg bg-emerald-500/10">
+                      <PiggyBank className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="relative z-10">
+                    <div className={`text-3xl font-bold ${monthlySavings >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {formatCurrency(Math.abs(monthlySavings))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {monthlySavings >= 0 ? 'Saved this month' : 'Overspent this month'}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border bg-gradient-to-br from-amber-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-500/20 to-transparent rounded-full blur-3xl" />
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+                    <CardTitle className="text-sm font-medium text-card-foreground">Expense Ratio</CardTitle>
+                    <div className="p-2 rounded-lg bg-amber-500/10">
+                      <PieChart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="relative z-10">
+                    <div className={`text-3xl font-bold ${expenseRatio <= 100 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {expenseRatio.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      This month's expense vs income
                     </p>
                   </CardContent>
                 </Card>

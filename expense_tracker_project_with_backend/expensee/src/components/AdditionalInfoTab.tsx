@@ -6,6 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   getTransactionHistory,
   saveTransactionHistory,
   getRentHistory,
@@ -19,6 +29,7 @@ import { generateTransactionReport, generateRentReport } from '../lib/additional
 export default function AdditionalInfoTab() {
   const [txItems, setTxItems] = useState<TransactionHistoryItem[]>([]);
   const [rentItems, setRentItems] = useState<RentHistoryItem[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'transaction' | 'rent' } | null>(null);
 
   // New row state for quick add
   const [newTxName, setNewTxName] = useState('');
@@ -101,6 +112,49 @@ export default function AdditionalInfoTab() {
     generateRentReport(rentItems);
   };
 
+  const downloadCsv = (filename: string, headers: string[], rows: Array<Array<string | number>>) => {
+    const csvRows = [
+      headers.join(','),
+      ...rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')),
+    ];
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadTxCSV = () => {
+    downloadCsv(
+      'transaction-history.csv',
+      ['Serial No', 'Transaction Name', 'Amount'],
+      txItems.map((item, index) => [index + 1, item.name, item.amount])
+    );
+  };
+
+  const downloadRentCSV = () => {
+    downloadCsv(
+      'rent-history.csv',
+      ['Month', 'Amount', 'Date', 'Deed With Homeowner'],
+      rentItems.map((item) => [item.month, item.amount, item.date, item.deedNote])
+    );
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return;
+
+    if (pendingDelete.type === 'transaction') {
+      removeTxItem(pendingDelete.id);
+    } else {
+      removeRentItem(pendingDelete.id);
+    }
+
+    setPendingDelete(null);
+  };
+
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold">Additional Info</h1>
@@ -112,6 +166,7 @@ export default function AdditionalInfoTab() {
             <span>History of Transaction</span>
             <div className="flex items-center gap-2">
               <Badge variant="outline">Total: {formatCurrency(txItems.reduce((s, i) => s + i.amount, 0))}</Badge>
+              <Button variant="outline" onClick={downloadTxCSV}>CSV</Button>
               <Button onClick={downloadTxPDF}>PDF</Button>
             </div>
           </CardTitle>
@@ -170,7 +225,7 @@ export default function AdditionalInfoTab() {
                         />
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="destructive" onClick={() => removeTxItem(item.id)}>
+                        <Button variant="destructive" onClick={() => setPendingDelete({ id: item.id, type: 'transaction' })}>
                           Delete
                         </Button>
                       </TableCell>
@@ -192,6 +247,7 @@ export default function AdditionalInfoTab() {
             <span>History of House Rent</span>
             <div className="flex items-center gap-2">
               <Badge variant="outline">Total: {formatCurrency(rentItems.reduce((s, i) => s + i.amount, 0))}</Badge>
+              <Button variant="outline" onClick={downloadRentCSV}>CSV</Button>
               <Button onClick={downloadRentPDF}>PDF</Button>
             </div>
           </CardTitle>
@@ -273,7 +329,7 @@ export default function AdditionalInfoTab() {
                         />
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="destructive" onClick={() => removeRentItem(item.id)}>
+                        <Button variant="destructive" onClick={() => setPendingDelete({ id: item.id, type: 'rent' })}>
                           Delete
                         </Button>
                       </TableCell>
@@ -292,6 +348,21 @@ export default function AdditionalInfoTab() {
           Grand Total: {formatCurrency(totalAll)}
         </Badge>
       </div>
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this record?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action permanently removes the selected entry from the additional information section.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -17,8 +17,8 @@ import {
   generateVoucherId, 
   formatCurrency 
 } from '@/lib/storage';
-import { Transaction, Loan, User, Category } from '@/types';
-import { Plus, CheckCircle, Clock, TrendingUp, TrendingDown } from 'lucide-react';
+import { Transaction, Loan, User, Category } from '@/components/types';
+import { Plus, CheckCircle, Clock, TrendingUp, TrendingDown, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface LoansManagerProps {
   onDataChange: () => void;
@@ -30,6 +30,11 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const [formData, setFormData] = useState({
     userId: '',
@@ -43,6 +48,10 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterType, filterStatus]);
 
   const loadData = () => {
     setLoans(getLoans());
@@ -193,6 +202,54 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+  };
+
+  const filteredLoans = getLoansWithUserInfo().filter((loan) => {
+    const searchValue = searchTerm.toLowerCase();
+    const title = loan.transaction?.title?.toLowerCase() || '';
+    const description = loan.transaction?.description?.toLowerCase() || '';
+    const userName = loan.user?.name?.toLowerCase() || '';
+
+    const matchesSearch =
+      !searchValue ||
+      title.includes(searchValue) ||
+      description.includes(searchValue) ||
+      userName.includes(searchValue);
+
+    const matchesType = filterType === 'all' || loan.type === filterType;
+    const matchesStatus = filterStatus === 'all' || loan.status === filterStatus;
+
+    return matchesSearch && matchesType && matchesStatus;
+  });
+
+  const totalPages = Math.ceil(filteredLoans.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentLoans = filteredLoans.slice(startIndex, endIndex);
+
+  const getPageNumbers = () => {
+    const pageNumbers: number[] = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i += 1) {
+        pageNumbers.push(i);
+      }
+      return pageNumbers;
+    }
+
+    let startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage < maxVisiblePages - 1) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i += 1) {
+      pageNumbers.push(i);
+    }
+
+    return pageNumbers;
   };
 
   const summary = getLoansSummary();
@@ -395,108 +452,217 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Filter className="mr-2 h-4 w-4" />
+            Loan Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="loan-search">Search</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="loan-search"
+                  placeholder="Title, note, or user"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="loan-type-filter">Type</Label>
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger id="loan-type-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="given">Loan Given</SelectItem>
+                  <SelectItem value="taken">Loan Taken</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="loan-status-filter">Status</Label>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger id="loan-status-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="repaid">Repaid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Loans Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Loans ({loans.length})</CardTitle>
+          <CardTitle>
+            All Loans ({filteredLoans.length})
+            {filteredLoans.length > 0 && (
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredLoans.length)} of {filteredLoans.length}
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {loans.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {getLoansWithUserInfo().map((loan) => (
-                    <TableRow key={loan.id}>
-                      <TableCell>
-                        {new Date(loan.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{loan.transaction?.title}</p>
-                          {loan.transaction?.description && (
-                            <p className="text-sm text-muted-foreground">{loan.transaction.description}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={loan.type === 'given' ? 'default' : 'destructive'}>
-                          {loan.type === 'given' ? 'GIVEN' : 'TAKEN'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{loan.user?.name || 'Unknown'}</TableCell>
-                      <TableCell className={`font-medium ${
-                        loan.type === 'given' ? 'text-red-600' : 'text-green-600'
-                      }`}>
-                        {formatCurrency(loan.amount)}
-                      </TableCell>
-                      <TableCell>
-                        {loan.dueDate ? (
-                          <span className={
-                            new Date(loan.dueDate) < new Date() && loan.status === 'pending'
-                              ? 'text-red-600 font-medium'
-                              : ''
-                          }>
-                            {new Date(loan.dueDate).toLocaleDateString()}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">No due date</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={loan.status === 'pending' ? 'outline' : 'default'}>
-                          {loan.status === 'pending' ? (
-                            <>
-                              <Clock className="mr-1 h-3 w-3" />
-                              PENDING
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="mr-1 h-3 w-3" />
-                              REPAID
-                            </>
-                          )}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {loan.status === 'pending' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRepayLoan(loan.id)}
-                          >
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Mark Repaid
-                          </Button>
-                        )}
-                        {loan.status === 'repaid' && loan.repaidDate && (
-                          <span className="text-sm text-muted-foreground">
-                            Repaid: {new Date(loan.repaidDate).toLocaleDateString()}
-                          </span>
-                        )}
-                      </TableCell>
+          {currentLoans.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {currentLoans.map((loan) => (
+                      <TableRow key={loan.id}>
+                        <TableCell>
+                          {new Date(loan.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{loan.transaction?.title}</p>
+                            {loan.transaction?.description && (
+                              <p className="text-sm text-muted-foreground">{loan.transaction.description}</p>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={loan.type === 'given' ? 'default' : 'destructive'}>
+                            {loan.type === 'given' ? 'GIVEN' : 'TAKEN'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{loan.user?.name || 'Unknown'}</TableCell>
+                        <TableCell className={`font-medium ${
+                          loan.type === 'given' ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {formatCurrency(loan.amount)}
+                        </TableCell>
+                        <TableCell>
+                          {loan.dueDate ? (
+                            <span className={
+                              new Date(loan.dueDate) < new Date() && loan.status === 'pending'
+                                ? 'text-red-600 font-medium'
+                                : ''
+                            }>
+                              {new Date(loan.dueDate).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">No due date</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={loan.status === 'pending' ? 'outline' : 'default'}>
+                            {loan.status === 'pending' ? (
+                              <>
+                                <Clock className="mr-1 h-3 w-3" />
+                                PENDING
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="mr-1 h-3 w-3" />
+                                REPAID
+                              </>
+                            )}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {loan.status === 'pending' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRepayLoan(loan.id)}
+                            >
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              Mark Repaid
+                            </Button>
+                          )}
+                          {loan.status === 'repaid' && loan.repaidDate && (
+                            <span className="text-sm text-muted-foreground">
+                              Repaid: {new Date(loan.repaidDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-6">
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+
+                    <div className="flex items-center space-x-1">
+                      {getPageNumbers().map((pageNum) => (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                          className="w-8 h-8 p-0"
+                        >
+                          {pageNum}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-8 text-gray-500">
               <p className="text-lg font-medium">No loans found</p>
               <p className="text-sm">
                 {users.length === 0 
                   ? "Add users first, then create your first loan"
+                  : loans.length > 0
+                  ? "No loans match your current filters"
                   : "Create your first loan to get started"
                 }
               </p>

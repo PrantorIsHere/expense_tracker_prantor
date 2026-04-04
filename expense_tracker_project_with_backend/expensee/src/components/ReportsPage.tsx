@@ -117,11 +117,15 @@ export default function ReportsPage() {
   }, [transactions, categories]);
 
   // Totals for the Category-wise Breakdown (All Time)
-  const totalsAllTime = useMemo(() => {
+  const categoryTotalsAllTime = useMemo(() => {
     const income = categoryStats.reduce((sum, s) => sum + s.income, 0);
     const expense = categoryStats.reduce((sum, s) => sum + s.expense, 0);
     return { income, expense };
   }, [categoryStats]);
+  const allTimeIncome = transactions.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const allTimeExpense = transactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const allTimeNet = allTimeIncome - allTimeExpense;
+  const allTimeExpenseRatio = allTimeIncome > 0 ? (allTimeExpense / allTimeIncome) * 100 : 0;
 
   // Expense breakdown (Pie) using stats
   const expenseBreakdown = useMemo(
@@ -233,6 +237,54 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Financial Reports</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">All-Time Income</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(allTimeIncome)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">All-Time Expense</CardTitle>
+            <TrendingDown className="h-4 w-4 text-red-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{formatCurrency(allTimeExpense)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">All-Time Net</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${allTimeNet >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(Math.abs(allTimeNet))}
+            </div>
+            <p className="text-xs text-muted-foreground">{allTimeNet >= 0 ? 'Surplus' : 'Deficit'}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Expense Ratio</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${allTimeExpenseRatio <= 100 ? 'text-green-600' : 'text-red-600'}`}>
+              {allTimeExpenseRatio.toFixed(1)}%
+            </div>
+            <p className="text-xs text-muted-foreground">Expense vs income across all time</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Current Month Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -630,8 +682,8 @@ export default function ReportsPage() {
               <tfoot>
                 <tr className="border-t">
                   <td className="py-2 pr-4 font-semibold">Total</td>
-                  <td className="py-2 pr-4 text-green-700 font-semibold">{formatCurrency(totalsAllTime.income)}</td>
-                  <td className="py-2 pr-4 text-red-700 font-semibold">{formatCurrency(totalsAllTime.expense)}</td>
+                  <td className="py-2 pr-4 text-green-700 font-semibold">{formatCurrency(categoryTotalsAllTime.income)}</td>
+                  <td className="py-2 pr-4 text-red-700 font-semibold">{formatCurrency(categoryTotalsAllTime.expense)}</td>
                   <td className="py-2 pr-4"></td>
                   <td className="py-2 pr-4"></td>
                   <td className="py-2 pr-4"></td>

@@ -1,5 +1,12 @@
-import { Transaction, User, Category, Loan, Goal } from '@/types';
+import { Transaction, User, Category, Loan, Goal } from '@/components/types';
 import { getCurrentSession, isAdmin } from './auth';
+import {
+  getTransactionHistoryForUser,
+  saveTransactionHistoryForUser,
+  getRentHistoryForUser,
+  saveRentHistoryForUser,
+  resetAdditionalInfoForUser,
+} from './additionalInfoStorage';
 
 // Get user-specific storage key
 const getUserStorageKey = (baseKey: string, userId?: string): string => {
@@ -132,7 +139,7 @@ export const generateUserVoucherId = (userId?: string): string => {
   return `${dateStr}-${newCounter.toString().padStart(4, '0')}`;
 };
 
-// Export user data
+// Export ALL user data including additional info
 export const exportUserData = (userId?: string) => {
   const session = getCurrentSession();
   const currentUserId = userId || session?.userId;
@@ -149,6 +156,11 @@ export const exportUserData = (userId?: string) => {
     loans: getUserLoans(currentUserId),
     goals: getUserGoals(currentUserId),
     settings: getUserSettings(currentUserId),
+    // Additional Info data
+    additionalInfo: {
+      transactionHistory: getTransactionHistoryForUser(currentUserId),
+      rentHistory: getRentHistoryForUser(currentUserId),
+    },
     exportDate: new Date().toISOString()
   };
   
@@ -161,13 +173,15 @@ export const exportUserData = (userId?: string) => {
   URL.revokeObjectURL(url);
 };
 
-// Import user data
+// Import ALL user data including additional info
 export const importUserData = (file: File, userId?: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
+        const session = getCurrentSession();
+        const currentUserId = userId || session?.userId;
         
         if (data.transactions) saveUserTransactions(data.transactions, userId);
         if (data.financialUsers) saveUserFinancialUsers(data.financialUsers, userId);
@@ -175,6 +189,16 @@ export const importUserData = (file: File, userId?: string): Promise<void> => {
         if (data.loans) saveUserLoans(data.loans, userId);
         if (data.goals) saveUserGoals(data.goals, userId);
         if (data.settings) saveUserSettings(data.settings, userId);
+        
+        // Import additional info data
+        if (data.additionalInfo && currentUserId) {
+          if (data.additionalInfo.transactionHistory) {
+            saveTransactionHistoryForUser(currentUserId, data.additionalInfo.transactionHistory);
+          }
+          if (data.additionalInfo.rentHistory) {
+            saveRentHistoryForUser(currentUserId, data.additionalInfo.rentHistory);
+          }
+        }
         
         resolve();
       } catch (error) {
@@ -185,7 +209,7 @@ export const importUserData = (file: File, userId?: string): Promise<void> => {
   });
 };
 
-// Reset user data
+// Reset ALL user data including additional info
 export const resetUserData = (userId?: string): void => {
   const session = getCurrentSession();
   const currentUserId = userId || session?.userId;
@@ -207,4 +231,7 @@ export const resetUserData = (userId?: string): void => {
   keysToRemove.forEach(key => {
     localStorage.removeItem(key);
   });
+
+  // Also reset additional info
+  resetAdditionalInfoForUser(currentUserId);
 };

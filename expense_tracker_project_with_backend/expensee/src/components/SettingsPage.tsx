@@ -10,17 +10,20 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   getSettings, 
   saveSettings, 
-  getUsers, 
-  saveUsers,
   getCategories, 
   saveCategories,
+  getTransactions,
+  getUsers,
+  getLoans,
+  getGoals,
   exportAllData,
   importData,
   resetAllData
 } from '@/lib/storage';
+import { getTransactionHistory, getRentHistory } from '@/lib/additionalInfoStorage';
 import { SUPPORTED_CURRENCIES } from '@/lib/currencyUtils';
 import UsersTab from './UsersTab';
-import { User, Category } from '@/components/types';
+import { Category } from '@/components/types';
 import { 
   Settings, 
   Users, 
@@ -61,10 +64,20 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   const [editCategoryName, setEditCategoryName] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [dataSummary, setDataSummary] = useState({
+    transactions: 0,
+    users: 0,
+    categories: 0,
+    loans: 0,
+    goals: 0,
+    transactionHistory: 0,
+    rentHistory: 0,
+  });
 
   useEffect(() => {
     loadSettings();
     loadCategories();
+    loadDataSummary();
   }, []);
 
   const loadSettings = () => {
@@ -78,6 +91,18 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   const loadCategories = () => {
     const loadedCategories = getCategories();
     setCategories(loadedCategories);
+  };
+
+  const loadDataSummary = () => {
+    setDataSummary({
+      transactions: getTransactions().length,
+      users: getUsers().length,
+      categories: getCategories().length,
+      loans: getLoans().length,
+      goals: getGoals().length,
+      transactionHistory: getTransactionHistory().length,
+      rentHistory: getRentHistory().length,
+    });
   };
 
   const handleSaveSettings = () => {
@@ -111,6 +136,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     setNewCategoryName('');
     setError('');
     loadCategories();
+    loadDataSummary();
     onDataChange();
   };
 
@@ -139,6 +165,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     setEditCategoryName('');
     setError('');
     loadCategories();
+    loadDataSummary();
     onDataChange();
   };
 
@@ -146,6 +173,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     const updatedCategories = categories.filter(cat => cat.id !== categoryId);
     saveCategories(updatedCategories);
     loadCategories();
+    loadDataSummary();
     onDataChange();
   };
 
@@ -169,6 +197,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
         setMessage('Data imported successfully!');
         loadSettings();
         loadCategories();
+        loadDataSummary();
         onDataChange();
         setTimeout(() => setMessage(''), 3000);
       })
@@ -186,6 +215,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
       resetAllData();
       loadSettings();
       loadCategories();
+      loadDataSummary();
       onDataChange();
       setMessage('All data has been reset');
       setTimeout(() => setMessage(''), 3000);
@@ -399,6 +429,49 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
               <CardTitle>Data Management</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div>
+                  <h3 className="font-medium">Backup Preview</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Export includes every record stored for the current signed-in user.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Transactions</p>
+                    <p className="text-xl font-semibold">{dataSummary.transactions}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Users</p>
+                    <p className="text-xl font-semibold">{dataSummary.users}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Categories</p>
+                    <p className="text-xl font-semibold">{dataSummary.categories}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Loans</p>
+                    <p className="text-xl font-semibold">{dataSummary.loans}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Goals</p>
+                    <p className="text-xl font-semibold">{dataSummary.goals}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Transaction History</p>
+                    <p className="text-xl font-semibold">{dataSummary.transactionHistory}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Rent History</p>
+                    <p className="text-xl font-semibold">{dataSummary.rentHistory}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Settings</p>
+                    <p className="text-xl font-semibold">1</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Button onClick={handleExportData} variant="outline">
                   <Download className="mr-2 h-4 w-4" />
@@ -428,7 +501,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
               </div>
 
               <div className="text-sm text-gray-600 space-y-2">
-                <p><strong>Export Data:</strong> Download all your data as a JSON file for backup purposes.</p>
+                <p><strong>Export Data:</strong> Download transactions, users, categories, loans, goals, settings, and additional info as a JSON backup.</p>
                 <p><strong>Import Data:</strong> Upload a previously exported JSON file to restore your data.</p>
                 <p><strong>Reset All Data:</strong> Permanently delete all transactions, users, categories, and settings.</p>
               </div>

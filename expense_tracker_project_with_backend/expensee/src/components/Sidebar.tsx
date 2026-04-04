@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Home,
   Receipt,
@@ -16,17 +17,19 @@ import {
 interface SidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  pendingLoansCount: number;
+  activeGoalsCount: number;
 }
 
-export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
+export default function Sidebar({ activeTab, onTabChange, pendingLoansCount, activeGoalsCount }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'transactions', label: 'Transactions', icon: Receipt },
-    { id: 'goals', label: 'Goals', icon: Target },
+    { id: 'goals', label: 'Goals', icon: Target, badge: activeGoalsCount },
     { id: 'reports', label: 'Reports', icon: TrendingUp },
-    { id: 'loans', label: 'Loans', icon: Banknote },
+    { id: 'loans', label: 'Loans', icon: Banknote, badge: pendingLoansCount },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'additional', label: 'Additional Info', icon: Info },
@@ -89,6 +92,11 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
                 >
                   <Icon className={`mr-3 h-5 w-5 ${isActive ? 'animate-pulse' : ''}`} />
                   <span className="font-medium">{item.label}</span>
+                  {typeof item.badge === 'number' && item.badge > 0 && (
+                    <Badge variant={isActive ? 'secondary' : 'outline'} className="ml-auto">
+                      {item.badge}
+                    </Badge>
+                  )}
                 </Button>
               );
             })}
