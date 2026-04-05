@@ -88,6 +88,8 @@ export const generateMonthlyStatementPDF = (
   const pageHeight = pdf.internal.pageSize.getHeight();
   const softwareName = getSoftwareName();
   const currentYear = getCurrentYear();
+  const continuedHeaderHeight = 25;
+  const continuedTableTopMargin = 32;
 
   // Bank statement colors - professional blue and white
   const darkBlue = [0, 51, 102];
@@ -236,13 +238,13 @@ export const generateMonthlyStatementPDF = (
       6: { cellWidth: 22, halign: 'right', textColor: [255, 0, 0], valign: 'middle' },
       7: { cellWidth: 18, halign: 'center', fontSize: 7, valign: 'middle' }
     },
-    margin: { left: 15, right: 15, top: 10, bottom: 30 },
+    margin: { left: 15, right: 15, top: continuedTableTopMargin, bottom: 30 },
     showHead: 'everyPage',
     didDrawPage: function(data) {
       // Add header on every page except first
       if (data.pageNumber > 1) {
         pdf.setFillColor(darkBlue[0], darkBlue[1], darkBlue[2]);
-        pdf.rect(0, 0, pageWidth, 25, 'F');
+        pdf.rect(0, 0, pageWidth, continuedHeaderHeight, 'F');
         
         pdf.setFont('helvetica', 'bold');
         pdf.setFontSize(14);
