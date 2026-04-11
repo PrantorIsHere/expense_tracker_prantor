@@ -6,10 +6,27 @@ const compression = require('compression');
 require('dotenv').config();
 
 const app = express();
+const allowedOriginPatterns = [
+  /^http:\/\/localhost:\d+$/,
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+  /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+  /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+  /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+:\d+$/,
+];
+const configuredOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin(origin, callback) {
+    if (!origin || configuredOrigins.includes(origin) || allowedOriginPatterns.some((pattern) => pattern.test(origin))) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true
 }));
 app.use(morgan('combined'));
@@ -31,4 +48,5 @@ app.use((err, req, res, next) => {
 app.use('*', (req,res)=> res.status(404).json({ error: 'Route not found' }));
 
 const PORT = process.env.API_PORT || 3001;
-app.listen(PORT, () => console.log(`API listening on :${PORT}`));
+const HOST = process.env.API_HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => console.log(`API listening on http://${HOST}:${PORT}`));
