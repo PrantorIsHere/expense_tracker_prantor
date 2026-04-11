@@ -1,5 +1,16 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
+type TransactionPayload = {
+  voucher_id?: string;
+  title: string;
+  description?: string;
+  amount: number;
+  type: 'income' | 'expense' | 'loan_given' | 'loan_taken';
+  category_id?: string | null;
+  financial_user_id?: string | null;
+  date: string;
+};
+
 class ApiClient {
   private token: string | null;
 
@@ -23,7 +34,14 @@ class ApiClient {
     const res = await fetch(url, { ...options, headers });
     if (!res.ok) {
       let message = res.statusText;
-      try { const j = await res.json(); if (j && j.error) message = j.error; } catch {}
+      try {
+        const j: unknown = await res.json();
+        if (j && typeof j === 'object' && 'error' in j && typeof j.error === 'string') {
+          message = j.error;
+        }
+      } catch {
+        message = res.statusText;
+      }
       throw new Error(message);
     }
     if (res.status === 204) return null;
@@ -50,8 +68,8 @@ class ApiClient {
 
   // Transactions
   async getTransactions() { return this.request('/transactions'); }
-  async createTransaction(tx: any) { return this.request('/transactions', { method: 'POST', body: JSON.stringify(tx) }); }
-  async updateTransaction(id: string, tx: any) { return this.request(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(tx) }); }
+  async createTransaction(tx: TransactionPayload) { return this.request('/transactions', { method: 'POST', body: JSON.stringify(tx) }); }
+  async updateTransaction(id: string, tx: Partial<TransactionPayload>) { return this.request(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(tx) }); }
   async deleteTransaction(id: string) { return this.request(`/transactions/${id}`, { method: 'DELETE' }); }
 
   // Categories
