@@ -5,6 +5,8 @@ import {
   saveTransactionHistoryForUser,
   getRentHistoryForUser,
   saveRentHistoryForUser,
+  getGadgetWarrantiesForUser,
+  saveGadgetWarrantiesForUser,
   resetAdditionalInfoForUser,
 } from './additionalInfoStorage';
 
@@ -160,6 +162,7 @@ export const exportUserData = (userId?: string) => {
     additionalInfo: {
       transactionHistory: getTransactionHistoryForUser(currentUserId),
       rentHistory: getRentHistoryForUser(currentUserId),
+      gadgetWarranties: getGadgetWarrantiesForUser(currentUserId),
     },
     exportDate: new Date().toISOString()
   };
@@ -197,6 +200,9 @@ export const importUserData = (file: File, userId?: string): Promise<void> => {
           }
           if (data.additionalInfo.rentHistory) {
             saveRentHistoryForUser(currentUserId, data.additionalInfo.rentHistory);
+          }
+          if (data.additionalInfo.gadgetWarranties) {
+            saveGadgetWarrantiesForUser(currentUserId, data.additionalInfo.gadgetWarranties);
           }
         }
         

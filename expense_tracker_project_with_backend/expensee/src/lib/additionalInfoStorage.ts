@@ -14,6 +14,16 @@ export type RentHistoryItem = {
   deedNote: string;
 };
 
+export type GadgetWarrantyItem = {
+  id: string;
+  productId: string;
+  serialNumber: string;
+  name: string;
+  purchaseDate: string; // ISO date string
+  warrantyMonths: number;
+  note: string;
+};
+
 // Get user-specific storage key
 const getUserKey = (baseKey: string): string => {
   const session = getCurrentSession();
@@ -27,6 +37,7 @@ const getUserKey = (baseKey: string): string => {
 
 const TX_KEY = 'additional_info_transaction_history';
 const RENT_KEY = 'additional_info_rent_history';
+const GADGET_KEY = 'additional_info_gadget_warranties';
 
 function readLocal<T>(key: string, fallback: T): T {
   try {
@@ -58,6 +69,14 @@ export function saveRentHistory(items: RentHistoryItem[]) {
   writeLocal<RentHistoryItem[]>(getUserKey(RENT_KEY), items);
 }
 
+export function getGadgetWarranties(): GadgetWarrantyItem[] {
+  return readLocal<GadgetWarrantyItem[]>(getUserKey(GADGET_KEY), []);
+}
+
+export function saveGadgetWarranties(items: GadgetWarrantyItem[]) {
+  writeLocal<GadgetWarrantyItem[]>(getUserKey(GADGET_KEY), items);
+}
+
 // For export/import - get raw data with explicit userId
 export function getTransactionHistoryForUser(userId: string): TransactionHistoryItem[] {
   return readLocal<TransactionHistoryItem[]>(`${TX_KEY}_${userId}`, []);
@@ -75,8 +94,17 @@ export function saveRentHistoryForUser(userId: string, items: RentHistoryItem[])
   writeLocal<RentHistoryItem[]>(`${RENT_KEY}_${userId}`, items);
 }
 
+export function getGadgetWarrantiesForUser(userId: string): GadgetWarrantyItem[] {
+  return readLocal<GadgetWarrantyItem[]>(`${GADGET_KEY}_${userId}`, []);
+}
+
+export function saveGadgetWarrantiesForUser(userId: string, items: GadgetWarrantyItem[]) {
+  writeLocal<GadgetWarrantyItem[]>(`${GADGET_KEY}_${userId}`, items);
+}
+
 // Reset additional info for a user
 export function resetAdditionalInfoForUser(userId: string) {
   localStorage.removeItem(`${TX_KEY}_${userId}`);
   localStorage.removeItem(`${RENT_KEY}_${userId}`);
+  localStorage.removeItem(`${GADGET_KEY}_${userId}`);
 }

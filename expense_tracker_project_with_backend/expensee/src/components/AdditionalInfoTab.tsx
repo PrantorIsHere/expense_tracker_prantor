@@ -20,8 +20,11 @@ import {
   saveTransactionHistory,
   getRentHistory,
   saveRentHistory,
+  getGadgetWarranties,
+  saveGadgetWarranties,
   type TransactionHistoryItem,
   type RentHistoryItem,
+  type GadgetWarrantyItem,
 } from '@/lib/additionalInfoStorage';
 import { formatCurrency } from '@/lib/storage';
 import { generateTransactionReport, generateRentReport } from '@/lib/additionalReports';
@@ -29,7 +32,8 @@ import { generateTransactionReport, generateRentReport } from '@/lib/additionalR
 export default function AdditionalInfoTab() {
   const [txItems, setTxItems] = useState<TransactionHistoryItem[]>([]);
   const [rentItems, setRentItems] = useState<RentHistoryItem[]>([]);
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'transaction' | 'rent' } | null>(null);
+  const [gadgetItems, setGadgetItems] = useState<GadgetWarrantyItem[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; type: 'transaction' | 'rent' | 'gadget' } | null>(null);
 
   // New row state for quick add
   const [newTxName, setNewTxName] = useState('');
@@ -39,10 +43,18 @@ export default function AdditionalInfoTab() {
   const [newRentAmount, setNewRentAmount] = useState('');
   const [newRentDate, setNewRentDate] = useState('');
   const [newRentNote, setNewRentNote] = useState('');
+  const [newGadgetName, setNewGadgetName] = useState('');
+  const [newGadgetProductId, setNewGadgetProductId] = useState('');
+  const [newGadgetSerial, setNewGadgetSerial] = useState('');
+  const [newGadgetPurchaseDate, setNewGadgetPurchaseDate] = useState('');
+  const [newGadgetWarrantyMonths, setNewGadgetWarrantyMonths] = useState('');
+  const [newGadgetNote, setNewGadgetNote] = useState('');
+  const [gadgetSearchTerm, setGadgetSearchTerm] = useState('');
 
   useEffect(() => {
     setTxItems(getTransactionHistory());
     setRentItems(getRentHistory());
+    setGadgetItems(getGadgetWarranties());
   }, []);
 
   // Helpers
@@ -102,6 +114,100 @@ export default function AdditionalInfoTab() {
     saveRentHistory(next);
   };
 
+  const addGadgetItem = () => {
+    if (!newGadgetName || !newGadgetProductId || !newGadgetSerial || !newGadgetPurchaseDate || !newGadgetWarrantyMonths) return;
+    const item: GadgetWarrantyItem = {
+      id: `gadget-${Date.now()}`,
+      productId: newGadgetProductId,
+      serialNumber: newGadgetSerial,
+      name: newGadgetName,
+      purchaseDate: newGadgetPurchaseDate,
+      warrantyMonths: parseInt(newGadgetWarrantyMonths || '0', 10),
+      note: newGadgetNote || '',
+    };
+    const next = [...gadgetItems, item];
+    setGadgetItems(next);
+    saveGadgetWarranties(next);
+    setNewGadgetName('');
+    setNewGadgetProductId('');
+    setNewGadgetSerial('');
+    setNewGadgetPurchaseDate('');
+    setNewGadgetWarrantyMonths('');
+    setNewGadgetNote('');
+  };
+
+  const updateGadgetItem = (id: string, patch: Partial<GadgetWarrantyItem>) => {
+    const next = gadgetItems.map((g) => (g.id === id ? { ...g, ...patch } : g));
+    setGadgetItems(next);
+    saveGadgetWarranties(next);
+  };
+
+  const removeGadgetItem = (id: string) => {
+    const next = gadgetItems.filter((g) => g.id !== id);
+    setGadgetItems(next);
+    saveGadgetWarranties(next);
+  };
+
+  const getWarrantyEndDate = (item: GadgetWarrantyItem) => {
+    const date = new Date(item.purchaseDate);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setMonth(date.getMonth() + (item.warrantyMonths || 0));
+    return date;
+  };
+
+  const getWarrantyStatus = (item: GadgetWarrantyItem) => {
+    const endDate = getWarrantyEndDate(item);
+    if (!endDate) {
+      return {
+        label: 'Invalid Date',
+        detail: 'Check purchase date',
+        variant: 'secondary' as const,
+        className: '',
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+    const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysLeft < 0) {
+      return {
+        label: 'Expired',
+        detail: `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} ago`,
+        variant: 'destructive' as const,
+        className: '',
+      };
+    }
+
+    if (daysLeft <= 30) {
+      return {
+        label: 'Expiring Soon',
+        detail: `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`,
+        variant: 'outline' as const,
+        className: 'border-amber-500 bg-amber-50 text-amber-700',
+      };
+    }
+
+    return {
+      label: 'Active',
+      detail: `${daysLeft} days left`,
+      variant: 'outline' as const,
+      className: 'border-green-600 bg-green-50 text-green-700',
+    };
+  };
+
+  const filteredGadgets = gadgetItems.filter((item) => {
+    const term = gadgetSearchTerm.trim().toLowerCase();
+    if (!term) return true;
+
+    return (
+      item.productId.toLowerCase().includes(term) ||
+      item.serialNumber.toLowerCase().includes(term) ||
+      item.name.toLowerCase().includes(term)
+    );
+  });
+
   const totalAll = txItems.reduce((s, i) => s + i.amount, 0) + rentItems.reduce((s, i) => s + i.amount, 0);
 
   const downloadTxPDF = () => {
@@ -143,13 +249,36 @@ export default function AdditionalInfoTab() {
     );
   };
 
+  const downloadGadgetCSV = () => {
+    downloadCsv(
+      'gadget-warranties.csv',
+      ['Product ID', 'Serial Number', 'Gadget Name', 'Purchase Date', 'Warranty Months', 'Warranty Ends', 'Status', 'Note'],
+      gadgetItems.map((item) => {
+        const endDate = getWarrantyEndDate(item);
+        const status = getWarrantyStatus(item);
+        return [
+          item.productId,
+          item.serialNumber,
+          item.name,
+          item.purchaseDate,
+          item.warrantyMonths,
+          endDate ? endDate.toLocaleDateString() : '',
+          `${status.label} - ${status.detail}`,
+          item.note,
+        ];
+      })
+    );
+  };
+
   const handleConfirmDelete = () => {
     if (!pendingDelete) return;
 
     if (pendingDelete.type === 'transaction') {
       removeTxItem(pendingDelete.id);
-    } else {
+    } else if (pendingDelete.type === 'rent') {
       removeRentItem(pendingDelete.id);
+    } else {
+      removeGadgetItem(pendingDelete.id);
     }
 
     setPendingDelete(null);
@@ -335,6 +464,161 @@ export default function AdditionalInfoTab() {
                       </TableCell>
                     </TableRow>
                   ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* SECTION 3: Gadget Warranty */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Gadget Warranty</span>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{gadgetItems.length} Items</Badge>
+              <Button variant="outline" onClick={downloadGadgetCSV}>CSV</Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
+            <Input
+              placeholder="Gadget Name"
+              value={newGadgetName}
+              onChange={(e) => setNewGadgetName(e.target.value)}
+            />
+            <Input
+              placeholder="Product ID"
+              value={newGadgetProductId}
+              onChange={(e) => setNewGadgetProductId(e.target.value)}
+            />
+            <Input
+              placeholder="Serial Number"
+              value={newGadgetSerial}
+              onChange={(e) => setNewGadgetSerial(e.target.value)}
+            />
+            <Input
+              type="date"
+              value={newGadgetPurchaseDate}
+              onChange={(e) => setNewGadgetPurchaseDate(e.target.value)}
+            />
+            <Input
+              placeholder="Warranty Months"
+              type="number"
+              min="1"
+              step="1"
+              value={newGadgetWarrantyMonths}
+              onChange={(e) => setNewGadgetWarrantyMonths(e.target.value)}
+            />
+            <Input
+              placeholder="Note"
+              value={newGadgetNote}
+              onChange={(e) => setNewGadgetNote(e.target.value)}
+            />
+            <Button onClick={addGadgetItem}>Add Gadget</Button>
+          </div>
+
+          <div className="mb-4 max-w-md">
+            <Input
+              placeholder="Search by product ID, serial number, or gadget name"
+              value={gadgetSearchTerm}
+              onChange={(e) => setGadgetSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product ID</TableHead>
+                  <TableHead>Serial Number</TableHead>
+                  <TableHead>Gadget Name</TableHead>
+                  <TableHead>Purchase Date</TableHead>
+                  <TableHead>Warranty</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Note</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredGadgets.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-muted-foreground">
+                      {gadgetItems.length === 0
+                        ? 'No gadget records. Add a gadget with product ID, serial number, and warranty period.'
+                        : 'No gadget matches your search.'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredGadgets.map((item) => {
+                    const warrantyEndDate = getWarrantyEndDate(item);
+                    const warrantyStatus = getWarrantyStatus(item);
+
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <Input
+                            value={item.productId}
+                            onChange={(e) => updateGadgetItem(item.id, { productId: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={item.serialNumber}
+                            onChange={(e) => updateGadgetItem(item.id, { serialNumber: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={item.name}
+                            onChange={(e) => updateGadgetItem(item.id, { name: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="date"
+                            value={item.purchaseDate.split('T')[0] || item.purchaseDate}
+                            onChange={(e) => updateGadgetItem(item.id, { purchaseDate: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            <Input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={item.warrantyMonths.toString()}
+                              onChange={(e) => updateGadgetItem(item.id, { warrantyMonths: parseInt(e.target.value || '0', 10) })}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Ends: {warrantyEndDate ? warrantyEndDate.toLocaleDateString() : 'Invalid date'}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={warrantyStatus.variant} className={warrantyStatus.className}>
+                            {warrantyStatus.label}
+                          </Badge>
+                          <p className="mt-1 text-xs text-muted-foreground">{warrantyStatus.detail}</p>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={item.note}
+                            onChange={(e) => updateGadgetItem(item.id, { note: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="destructive" onClick={() => setPendingDelete({ id: item.id, type: 'gadget' })}>
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
