@@ -83,7 +83,7 @@ export default function Index() {
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
   const monthlySavings = monthlyIncome - monthlyExpenses;
-  const expenseRatio = monthlyIncome > 0 ? (monthlyExpenses / monthlyIncome) * 100 : 0;
+  const expenseRatio = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0;
 
   // Calculate loan statistics - ONLY PENDING LOANS (matching Loans page)
   const pendingLoans = loans.filter(l => l.status === 'pending');
@@ -287,7 +287,7 @@ export default function Index() {
                       {expenseRatio.toFixed(1)}%
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      This month's expense vs income
+                      All-time expense vs income
                     </p>
                   </CardContent>
                 </Card>
