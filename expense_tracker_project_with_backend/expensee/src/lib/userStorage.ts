@@ -9,6 +9,7 @@ import {
   saveGadgetWarrantiesForUser,
   resetAdditionalInfoForUser,
 } from './additionalInfoStorage';
+import { createDhakaTimestamp, getDhakaDateKey } from './dhakaTime';
 
 // Get user-specific storage key
 const getUserStorageKey = (baseKey: string, userId?: string): string => {
@@ -127,8 +128,7 @@ export const generateUserVoucherId = (userId?: string): string => {
     throw new Error('No authenticated user found');
   }
   
-  const today = new Date();
-  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const dateStr = getDhakaDateKey();
   
   const counterKey = `expense_tracker_voucher_counter_${currentUserId}`;
   const counter = JSON.parse(localStorage.getItem(counterKey) || '{}');
@@ -164,14 +164,14 @@ export const exportUserData = (userId?: string) => {
       rentHistory: getRentHistoryForUser(currentUserId),
       gadgetWarranties: getGadgetWarrantiesForUser(currentUserId),
     },
-    exportDate: new Date().toISOString()
+    exportDate: createDhakaTimestamp()
   };
   
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `expense-tracker-backup-${currentUserId}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `expense-tracker-backup-${currentUserId}-${getDhakaDateKey()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 };

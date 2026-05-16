@@ -18,6 +18,14 @@ import {
 } from '@/lib/storage';
 import { downloadVoucher } from '@/lib/voucherGenerator';
 import { downloadMonthlyStatement } from '@/lib/monthlyStatementPDF';
+import {
+  createDhakaTimestamp,
+  formatDateDhaka,
+  getDhakaDateInputValue,
+  getDhakaMonthIndex,
+  getDhakaYear,
+  getStoredDateInputValue
+} from '@/lib/dhakaTime';
 import { Transaction, User, Category } from '@/components/types';
 import { Plus, Edit, Trash2, Download, Search, Filter, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 
@@ -43,8 +51,8 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   const [itemsPerPage] = useState(10);
 
   // Monthly statement state
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState(getDhakaMonthIndex().toString());
+  const [selectedYear, setSelectedYear] = useState(getDhakaYear().toString());
 
   const [formData, setFormData] = useState({
     title: '',
@@ -53,7 +61,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     type: 'expense' as 'income' | 'expense' | 'loan_given' | 'loan_taken',
     categoryId: '',
     userId: '',
-    date: new Date().toISOString().split('T')[0]
+    date: getDhakaDateInputValue()
   });
 
   useEffect(() => {
@@ -74,7 +82,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       type: 'expense',
       categoryId: '',
       userId: '',
-      date: new Date().toISOString().split('T')[0]
+      date: getDhakaDateInputValue()
     });
     setEditingTransaction(null);
   };
@@ -96,9 +104,9 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       type: formData.type,
       categoryId: formData.categoryId,
       userId: formData.userId,
-      date: new Date(formData.date).toISOString(),
-      createdAt: editingTransaction?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      date: createDhakaTimestamp(formData.date),
+      createdAt: editingTransaction?.createdAt || createDhakaTimestamp(),
+      updatedAt: createDhakaTimestamp()
     };
 
     const updatedTransactions = editingTransaction
@@ -122,7 +130,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       type: transaction.type,
       categoryId: transaction.categoryId,
       userId: transaction.userId,
-      date: transaction.date.split('T')[0]
+      date: getStoredDateInputValue(transaction.date)
     });
     setIsDialogOpen(true);
   };
@@ -173,9 +181,9 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       const matchesCategory = filterCategory === 'all' || transaction.categoryId === filterCategory;
       const matchesUser = filterUser === 'all' || transaction.userId === filterUser;
       
-      const transactionDate = new Date(transaction.date);
-      const matchesDateFrom = !dateFrom || transactionDate >= new Date(dateFrom);
-      const matchesDateTo = !dateTo || transactionDate <= new Date(dateTo);
+      const transactionDate = getStoredDateInputValue(transaction.date);
+      const matchesDateFrom = !dateFrom || transactionDate >= dateFrom;
+      const matchesDateTo = !dateTo || transactionDate <= dateTo;
 
       return matchesSearch && matchesType && matchesCategory && matchesUser && matchesDateFrom && matchesDateTo;
     });
@@ -236,7 +244,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
 
   // Generate month and year options
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const currentYear = new Date().getFullYear();
+  const currentYear = getDhakaYear();
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
 
   return (
@@ -582,7 +590,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                       return (
                         <TableRow key={transaction.id}>
                           <TableCell>
-                            {new Date(transaction.date).toLocaleDateString()}
+                            {formatDateDhaka(transaction.date)}
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{transaction.voucherId}</Badge>

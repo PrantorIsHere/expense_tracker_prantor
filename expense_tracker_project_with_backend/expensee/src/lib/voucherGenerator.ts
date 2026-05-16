@@ -1,17 +1,8 @@
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
 import { Transaction, User, Category } from '@/components/types';
 import { getSettings } from './storage';
-
-// Augment jsPDF type to include lastAutoTable from jspdf-autotable
-declare module 'jspdf' {
-  interface jsPDF {
-    lastAutoTable?: {
-      finalY: number;
-    };
-  }
-}
+import { getCurrentSession } from './auth';
 
 interface ExtendedSettings {
   currency: string;
@@ -141,318 +132,183 @@ export const generateVoucherPDF = (
   user: User,
   category: Category
 ) => {
-  // A4 size landscape for bank cheque style: 297mm x 210mm
-  const pdf = new jsPDF({
-    orientation: 'landscape',
-    unit: 'mm',
-    format: 'a4'
-  });
+  {
+    // Compact money receipt size, closer to a cash voucher than a certificate.
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: [210, 99]
+    });
 
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const softwareName = getSoftwareName();
-  const currentYear = getCurrentYear();
-  const { date: dhakaDate, day, month, year } = formatDateTimeDhaka(new Date(transaction.date));
-  const amountInWords = numberToWords(transaction.amount);
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const softwareName = getSoftwareName();
+    const currentYear = getCurrentYear();
+    const { date: dhakaDate, time: dhakaTime, day, month, year } = formatDateTimeDhaka(new Date(transaction.date));
+    const amountInWords = numberToWords(transaction.amount);
+    const currencyCode = getCurrencyCode();
+    const session = getCurrentSession();
+    const payFrom = session?.username || softwareName;
+    const typeLabel = transaction.type.replace('_', ' ').toUpperCase();
+    const description = transaction.description || transaction.title || 'N/A';
 
-  // Bank cheque style colors - cream/beige background with subtle patterns
-  const creamBg = [252, 248, 240];
-  const lightBrown = [210, 180, 140];
-  const darkBrown = [101, 67, 33];
-  const securityLineColor = [230, 220, 200];
-  const borderColor = [180, 150, 120];
+    const ink = [32, 37, 42];
+    const muted = [92, 100, 112];
+    const accent = [17, 120, 82];
+    const darkAccent = [43, 43, 43];
+    const lineColor = [164, 174, 185];
+    const paleGreen = [235, 248, 241];
+    const softGray = [246, 248, 250];
 
-  // Background - Cream color
-  pdf.setFillColor(creamBg[0], creamBg[1], creamBg[2]);
-  pdf.rect(0, 0, pageWidth, pageHeight, 'F');
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F');
 
-  // Security pattern - subtle diagonal lines
-  pdf.setDrawColor(securityLineColor[0], securityLineColor[1], securityLineColor[2]);
-  pdf.setLineWidth(0.1);
-  for (let i = 0; i < pageWidth + pageHeight; i += 5) {
-    pdf.line(i, 0, i - pageHeight, pageHeight);
-  }
+    pdf.setDrawColor(235, 239, 242);
+    pdf.setLineWidth(0.1);
+    for (let i = -pageHeight; i < pageWidth; i += 6) {
+      pdf.line(i, pageHeight, i + pageHeight, 0);
+    }
 
-  // Watermark text - "PAID" in center
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(80);
-  pdf.setTextColor(240, 235, 225);
-  pdf.text('PAID', pageWidth / 2, pageHeight / 2, { 
-    align: 'center',
-    angle: 45
-  });
+    pdf.setFillColor(255, 255, 255);
+    pdf.roundedRect(6, 6, pageWidth - 12, pageHeight - 12, 2, 2, 'F');
 
-  // Main border
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.8);
-  pdf.rect(10, 10, pageWidth - 20, pageHeight - 20);
+    pdf.setFillColor(accent[0], accent[1], accent[2]);
+    pdf.rect(6, pageHeight - 9, pageWidth * 0.43, 3, 'F');
+    pdf.setFillColor(darkAccent[0], darkAccent[1], darkAccent[2]);
+    pdf.rect(6 + pageWidth * 0.43, pageHeight - 9, pageWidth - 12 - pageWidth * 0.43, 3, 'F');
 
-  // Inner decorative border
-  pdf.setLineWidth(0.3);
-  pdf.rect(12, 12, pageWidth - 24, pageHeight - 24);
+    pdf.setDrawColor(accent[0], accent[1], accent[2]);
+    pdf.setLineWidth(0.6);
+    pdf.roundedRect(6, 6, pageWidth - 12, pageHeight - 12, 2, 2, 'S');
 
-  // Top section - Software name and document title
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(18);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text(softwareName, 20, 25);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(42);
+    pdf.setTextColor(239, 245, 242);
+    pdf.text('PAID', pageWidth / 2, 59, { align: 'center', angle: -12 });
 
-  // Document type
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(14);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('EXPENSE PAYMENT VOUCHER', pageWidth / 2, 25, { align: 'center' });
+    pdf.setFillColor(accent[0], accent[1], accent[2]);
+    pdf.circle(19, 18, 8, 'F');
+    pdf.setDrawColor(255, 255, 255);
+    pdf.setLineWidth(1.2);
+    pdf.circle(19, 18, 5, 'S');
+    pdf.circle(19, 18, 2.5, 'S');
 
-  // Voucher number on top right
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.text(`Voucher No: ${transaction.voucherId}`, pageWidth - 20, 25, { align: 'right' });
-
-  // Date boxes (similar to cheque date format)
-  const dateBoxY = 35;
-  const dateBoxX = pageWidth - 80;
-  
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(9);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('DATE', dateBoxX - 15, dateBoxY + 4);
-
-  // Date boxes
-  const boxSize = 8;
-  const boxSpacing = 1;
-  const dateDigits = [day[0], day[1], month[0], month[1], year[0], year[1], year[2], year[3]];
-  const labels = ['D', '', 'M', '', 'Y', '', '', ''];
-  
-  for (let i = 0; i < dateDigits.length; i++) {
-    const x = dateBoxX + i * (boxSize + boxSpacing);
-    
-    // Draw box
-    pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-    pdf.setLineWidth(0.3);
-    pdf.rect(x, dateBoxY, boxSize, boxSize);
-    
-    // Draw digit
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(11);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(dateDigits[i], x + boxSize / 2, dateBoxY + 6, { align: 'center' });
-    
-    // Draw label below
-    if (labels[i]) {
-      pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(ink[0], ink[1], ink[2]);
+    pdf.text(softwareName.toUpperCase(), 31, 16);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(6.5);
+    pdf.setTextColor(muted[0], muted[1], muted[2]);
+    pdf.text('EXPENSE MANAGEMENT SYSTEM', 31, 21);
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(15);
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFillColor(darkAccent[0], darkAccent[1], darkAccent[2]);
+    pdf.roundedRect(78, 16, 55, 10, 1, 1, 'F');
+    pdf.text('MONEY RECEIPT', pageWidth / 2, 23, { align: 'center' });
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(7);
+    pdf.setTextColor(muted[0], muted[1], muted[2]);
+    pdf.text('Voucher ID', 145, 13);
+    pdf.text('Date', 145, 21);
+    pdf.setTextColor(ink[0], ink[1], ink[2]);
+    pdf.text(transaction.voucherId, pageWidth - 10, 13, { align: 'right' });
+    pdf.text(dhakaDate, pageWidth - 10, 21, { align: 'right' });
+
+    const dateBoxX = pageWidth - 59;
+    const dateBoxY = 25;
+    const boxW = 5.7;
+    const digits = [day[0], day[1], month[0], month[1], year[0], year[1], year[2], year[3]];
+    pdf.setFontSize(7);
+    pdf.setTextColor(muted[0], muted[1], muted[2]);
+    pdf.text('Date', dateBoxX - 12, dateBoxY + 4);
+    digits.forEach((digit, index) => {
+      const x = dateBoxX + index * (boxW + 0.6);
+      pdf.setDrawColor(218, 224, 229);
+      pdf.setFillColor(250, 251, 252);
+      pdf.rect(x, dateBoxY, boxW, 6.2, 'FD');
+      pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(7);
-      pdf.setTextColor(100, 100, 100);
-      pdf.text(labels[i], x + boxSize / 2, dateBoxY + boxSize + 3, { align: 'center' });
+      pdf.setTextColor(ink[0], ink[1], ink[2]);
+      pdf.text(digit, x + boxW / 2, dateBoxY + 4.3, { align: 'center' });
+    });
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(5.5);
+    pdf.setTextColor(155, 162, 170);
+    pdf.text('DD', dateBoxX + 5.8, dateBoxY + 9.2, { align: 'center' });
+    pdf.text('MM', dateBoxX + 18.4, dateBoxY + 9.2, { align: 'center' });
+    pdf.text('YYYY', dateBoxX + 35.5, dateBoxY + 9.2, { align: 'center' });
+
+    const dottedLine = (x1: number, y: number, x2: number) => {
+      pdf.setDrawColor(lineColor[0], lineColor[1], lineColor[2]);
+      pdf.setLineWidth(0.35);
+      pdf.setLineDashPattern([0.9, 1.3], 0);
+      pdf.line(x1, y, x2, y);
+      pdf.setLineDashPattern([], 0);
+    };
+
+    const labelValueLine = (label: string, value: string, x: number, y: number, width: number) => {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(ink[0], ink[1], ink[2]);
+      pdf.text(label, x, y);
+      const labelWidth = pdf.getTextWidth(label) + 2;
+      dottedLine(x + labelWidth, y + 1, x + width, y + 1);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(ink[0], ink[1], ink[2]);
+      const clippedValue = pdf.splitTextToSize(value, width - labelWidth - 2)[0] || '';
+      pdf.text(clippedValue, x + labelWidth + 1, y);
+    };
+
+    try {
+      const barcodeDataUrl = generateBarcode(transaction.voucherId);
+      pdf.addImage(barcodeDataUrl, 'PNG', 14, 25, 37, 10);
+    } catch (e) {
+      console.error('Barcode generation failed:', e);
     }
+
+    labelValueLine('Received with thanks from', payFrom, 12, 42, 186);
+    labelValueLine('Paid to', user.name, 12, 51, 91);
+    labelValueLine('Title', transaction.title, 108, 51, 90);
+    labelValueLine('Type', typeLabel, 12, 60, 56);
+    labelValueLine('Category', category.name, 73, 60, 62);
+    labelValueLine('Purpose', description, 140, 60, 58);
+    labelValueLine('The Sum of Taka', amountInWords, 12, 69, 186);
+
+    pdf.setFillColor(paleGreen[0], paleGreen[1], paleGreen[2]);
+    pdf.roundedRect(12, 74, 58, 13, 1, 1, 'F');
+    pdf.setFillColor(darkAccent[0], darkAccent[1], darkAccent[2]);
+    pdf.rect(12, 74, 15, 13, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(12);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(currencyCode === 'BDT' ? 'TK.' : currencyCode, 19.5, 82.5, { align: 'center' });
+    pdf.setTextColor(ink[0], ink[1], ink[2]);
+    pdf.setFontSize(14);
+    pdf.text(formatAmount(transaction.amount), 67, 82.5, { align: 'right' });
+
+    pdf.setFillColor(softGray[0], softGray[1], softGray[2]);
+    pdf.roundedRect(78, 74, 120, 13, 1, 1, 'F');
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(muted[0], muted[1], muted[2]);
+    pdf.text('System generated', 83, 79);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8.2);
+    pdf.setTextColor(ink[0], ink[1], ink[2]);
+    pdf.text('This is a system-generated voucher. No signature required.', 83, 84);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(5.8);
+    pdf.setTextColor(muted[0], muted[1], muted[2]);
+    pdf.text(`Generated ${dhakaDate} ${dhakaTime} | ${currentYear} ${softwareName}`, pageWidth / 2, 88.8, { align: 'center' });
+
+    return pdf;
   }
-
-  // Barcode on left side
-  const barcodeY = 35;
-  try {
-    const barcodeDataUrl = generateBarcode(transaction.voucherId);
-    pdf.addImage(barcodeDataUrl, 'PNG', 20, barcodeY, 45, 15);
-  } catch (e) {
-    console.error('Barcode generation failed:', e);
-  }
-
-  // Main content area starts
-  const contentStartY = 60;
-
-  // "Pay To" section
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(11);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('Pay To', 20, contentStartY);
-
-  // Recipient name with double asterisks (bank style)
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(13);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text(`**${user.name}**`, 50, contentStartY);
-
-  // Underline for Pay To
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(50, contentStartY + 1, pageWidth - 20, contentStartY + 1);
-
-  // "The Sum of Taka" section
-  const amountWordsY = contentStartY + 15;
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('The Sum of Taka', 20, amountWordsY);
-
-  // Amount in words with double asterisks
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(12);
-  pdf.setTextColor(0, 0, 0);
-  
-  // Split amount in words into multiple lines if needed
-  const maxWidth = pageWidth - 180;
-  const amountWordsLines = pdf.splitTextToSize(`**${amountInWords}**`, maxWidth);
-  let currentY = amountWordsY;
-  
-  amountWordsLines.forEach((line: string, index: number) => {
-    pdf.text(line, 60, currentY);
-    if (index < amountWordsLines.length - 1) {
-      currentY += 8;
-    }
-  });
-
-  // Amount box on the right (bank cheque style)
-  const amountBoxX = pageWidth - 90;
-  const amountBoxY = amountWordsY - 8;
-  const amountBoxWidth = 70;
-  const amountBoxHeight = 20;
-
-  // Amount box background
-  pdf.setFillColor(255, 255, 255);
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.5);
-  pdf.rect(amountBoxX, amountBoxY, amountBoxWidth, amountBoxHeight, 'FD');
-
-  // "Tk" label
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(14);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('Tk', amountBoxX + 5, amountBoxY + 13);
-
-  // Amount value
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(16);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text(`**${formatAmount(transaction.amount)}**`, amountBoxX + amountBoxWidth - 5, amountBoxY + 13, { align: 'right' });
-
-  // Vertical line in amount box
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(amountBoxX + 18, amountBoxY, amountBoxX + 18, amountBoxY + amountBoxHeight);
-
-  // Underline below amount in words
-  const underlineY = currentY + 2;
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(60, underlineY, pageWidth - 100, underlineY);
-
-  // "A/C No." section
-  const acY = underlineY + 12;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('A/C No. :', 20, acY);
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(11);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Common', 50, acY);
-
-  // Underline for A/C
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(50, acY + 1, 150, acY + 1);
-
-  // Category/Purpose section
-  const categoryY = acY + 12;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('Purpose :', 20, categoryY);
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(11);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text(category.name, 50, categoryY);
-
-  // Underline for Purpose
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(50, categoryY + 1, 150, categoryY + 1);
-
-  // Description section
-  const descY = categoryY + 12;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('Details :', 20, descY);
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(0, 0, 0);
-  const description = transaction.title || transaction.description || 'N/A';
-  const descLines = pdf.splitTextToSize(description, pageWidth - 100);
-  let descCurrentY = descY;
-  descLines.forEach((line: string) => {
-    pdf.text(line, 50, descCurrentY);
-    descCurrentY += 6;
-  });
-
-  // Bottom signature section
-  const signatureY = pageHeight - 40;
-
-  // Prepared By section (left) - WITH SIGNATURE
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('Prepared By:', 30, signatureY);
-
-  // Signature line for Prepared By
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(30, signatureY + 10, 90, signatureY + 10);
-
-  // Signature: "Prantor" in elegant cursive italic (SAME AS AUTHORIZED)
-  pdf.setFont('times', 'italic');
-  pdf.setFontSize(18);
-  pdf.setTextColor(0, 0, 139); // Dark blue for signature
-  pdf.text('Prantor', 60, signatureY + 8);
-
-  // Name: Sharif R Prantor (below signature)
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(11);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Sharif R Prantor', 30, signatureY + 15);
-
-  // Authorized Signature section (right)
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(10);
-  pdf.setTextColor(darkBrown[0], darkBrown[1], darkBrown[2]);
-  pdf.text('Authorized Signature:', pageWidth - 100, signatureY);
-
-  // Signature line for Authorized
-  pdf.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-  pdf.setLineWidth(0.3);
-  pdf.line(pageWidth - 100, signatureY + 10, pageWidth - 30, signatureY + 10);
-
-  // Signature: "Prantor" in elegant cursive italic
-  pdf.setFont('times', 'italic');
-  pdf.setFontSize(18);
-  pdf.setTextColor(0, 0, 139); // Dark blue for signature
-  pdf.text('Prantor', pageWidth - 70, signatureY + 8);
-
-  // Footer - Copyright with dynamic year
-  const footerY = pageHeight - 15;
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(8);
-  pdf.setTextColor(100, 100, 100);
-  pdf.text(
-    `© ${currentYear} ${softwareName}. All rights reserved. | Generated on ${dhakaDate} (Asia/Dhaka)`,
-    pageWidth / 2,
-    footerY,
-    { align: 'center' }
-  );
-
-  // Security note at bottom
-  pdf.setFont('helvetica', 'italic');
-  pdf.setFontSize(7);
-  pdf.setTextColor(120, 120, 120);
-  pdf.text(
-    'This is a computer-generated voucher and does not require a physical signature.',
-    pageWidth / 2,
-    footerY + 4,
-    { align: 'center' }
-  );
-
-  return pdf;
 };
 
 export const downloadVoucher = (
