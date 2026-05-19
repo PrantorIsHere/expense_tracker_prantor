@@ -2,6 +2,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getTransactions, getCategories } from './storage';
 
+type RGBColor = [number, number, number];
+
 declare module 'jspdf' {
   interface jsPDF {
     lastAutoTable?: {
@@ -46,11 +48,11 @@ export function generateCategoryBreakdownPDF() {
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 40;
 
-  const primaryBlue = [41, 128, 185];
-  const darkGrey = [52, 73, 94];
-  const lightGrey = [236, 240, 241];
-  const greenIncome = [39, 174, 96];
-  const redExpense = [231, 76, 60];
+  const primaryBlue: RGBColor = [41, 128, 185];
+  const darkGrey: RGBColor = [52, 73, 94];
+  const lightGrey: RGBColor = [236, 240, 241];
+  const greenIncome: RGBColor = [39, 174, 96];
+  const redExpense: RGBColor = [231, 76, 60];
 
   doc.setFillColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
   doc.rect(0, 0, pageWidth, 120, 'F');
@@ -226,10 +228,10 @@ function drawSummarySection(
   y: number,
   totalIncome: number,
   totalExpense: number,
-  greenIncome: number[],
-  redExpense: number[],
-  darkGrey: number[],
-  lightGrey: number[]
+  greenIncome: RGBColor,
+  redExpense: RGBColor,
+  darkGrey: RGBColor,
+  lightGrey: RGBColor
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const summaryWidth = pageWidth - x * 2;
@@ -257,7 +259,7 @@ function drawSummarySection(
   const row1Y = y + 55;
   const row2Y = y + 85;
 
-  const drawNumberBox = (boxX: number, boxY: number, label: string, value: string, color: number[]) => {
+  const drawNumberBox = (boxX: number, boxY: number, label: string, value: string, color: RGBColor) => {
     doc.setDrawColor(220, 220, 220);
     doc.setLineWidth(0.5);
     doc.setFillColor(250, 250, 250);
@@ -290,7 +292,7 @@ function drawSummarySection(
   doc.text('For queries, contact support@expensetracker.com', x + 20, footerY + 15);
 }
 
-function addPageNumbers(doc: jsPDF, margin: number, darkGrey: number[]) {
+function addPageNumbers(doc: jsPDF, margin: number, darkGrey: RGBColor) {
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i += 1) {
     doc.setPage(i);

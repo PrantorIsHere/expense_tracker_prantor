@@ -3,6 +3,8 @@ import autoTable from 'jspdf-autotable';
 import { Transaction, User, Category } from '@/types';
 import { getSettings } from './storage';
 
+type RGBColor = [number, number, number];
+
 // Augment jsPDF type to include lastAutoTable from jspdf-autotable
 declare module 'jspdf' {
   interface jsPDF {
@@ -92,10 +94,10 @@ export const generateMonthlyStatementPDF = (
   const continuedTableTopMargin = 32;
 
   // Bank statement colors - professional blue and white
-  const darkBlue = [0, 51, 102];
-  const lightBlue = [230, 240, 250];
-  const borderGray = [200, 200, 200];
-  const textDark = [40, 40, 40];
+  const darkBlue: RGBColor = [0, 51, 102];
+  const lightBlue: RGBColor = [230, 240, 250];
+  const borderGray: RGBColor = [200, 200, 200];
+  const textDark: RGBColor = [40, 40, 40];
 
   // Header Section - Company Info
   pdf.setFillColor(darkBlue[0], darkBlue[1], darkBlue[2]);

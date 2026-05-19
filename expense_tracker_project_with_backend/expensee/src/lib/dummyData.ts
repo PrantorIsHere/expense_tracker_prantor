@@ -129,8 +129,10 @@ const dummyGoals: Goal[] = [
     targetAmount: 100000,
     currentAmount: 45000,
     deadline: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+    priority: 'high',
     status: 'active',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   {
     id: '2',
@@ -138,8 +140,10 @@ const dummyGoals: Goal[] = [
     targetAmount: 50000,
     currentAmount: 20000,
     deadline: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toISOString(),
+    priority: 'medium',
     status: 'active',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   }
 ];
 

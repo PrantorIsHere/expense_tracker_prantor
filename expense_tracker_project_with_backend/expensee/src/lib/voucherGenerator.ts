@@ -256,7 +256,7 @@ export const generateVoucherPDF = (
       pdf.setTextColor(ink[0], ink[1], ink[2]);
       pdf.text(label, x, y);
       const labelWidth = pdf.getTextWidth(label) + 2;
-      dottedLine(x + labelWidth, y + 1, x + width, y + 1);
+      dottedLine(x + labelWidth, y + 1, x + width);
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(8.5);
       pdf.setTextColor(ink[0], ink[1], ink[2]);
