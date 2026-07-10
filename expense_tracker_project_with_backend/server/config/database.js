@@ -1,22 +1,38 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+const low = require('lowdb');
+const FileSync = require('lowdb/adapters/FileSync');
+const path = require('path');
+const fs = require('fs');
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  database: process.env.DB_NAME || 'expense_tracker',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'root',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+// Ensure db directory exists
+const dbDir = path.join(__dirname, '..', 'db');
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
 
-pool.on('connect', () => console.log('Connected to PostgreSQL'));
-pool.on('error', (err) => {
-  console.error('PostgreSQL error:', err);
-  process.exit(-1);
-});
+const dbPath = path.join(dbDir, 'data.json');
 
-module.exports = pool;
+const adapter = new FileSync(dbPath);
+const db = low(adapter);
+
+// Set defaults (only applied if the key doesn't exist yet)
+db.defaults({
+  users: [],
+  transactions: [],
+  categories: [
+    { id: 'cat-1',  name: 'Food & Dining',    color: '#FF6B6B', icon: '🍔', user_id: null },
+    { id: 'cat-2',  name: 'Transport',         color: '#4ECDC4', icon: '🚗', user_id: null },
+    { id: 'cat-3',  name: 'Shopping',          color: '#45B7D1', icon: '🛍️', user_id: null },
+    { id: 'cat-4',  name: 'Entertainment',     color: '#96CEB4', icon: '🎬', user_id: null },
+    { id: 'cat-5',  name: 'Health & Medical',  color: '#FFEAA7', icon: '💊', user_id: null },
+    { id: 'cat-6',  name: 'Bills & Utilities', color: '#DDA0DD', icon: '💡', user_id: null },
+    { id: 'cat-7',  name: 'Salary',            color: '#90EE90', icon: '💰', user_id: null },
+    { id: 'cat-8',  name: 'Business',          color: '#FFB347', icon: '💼', user_id: null },
+    { id: 'cat-9',  name: 'Education',         color: '#87CEEB', icon: '📚', user_id: null },
+    { id: 'cat-10', name: 'Other',             color: '#D3D3D3', icon: '📦', user_id: null },
+  ],
+  settings: [],
+}).write();
+
+console.log(`JSON database ready at: ${dbPath}`);
+
+module.exports = db;
