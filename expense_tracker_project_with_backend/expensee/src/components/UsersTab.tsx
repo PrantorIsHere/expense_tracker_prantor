@@ -23,8 +23,10 @@ import {
 } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { getUsers, saveUsers, getTransactions } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
 import { registerUser, deleteUser, getCurrentSession, isAdmin, getAllUsers } from '@/lib/auth';
 import { User } from '@/types';
+import { Transaction } from '@/components/types';
 import { AuthUser } from '@/types/auth';
 import { Users, UserPlus, Edit2, Trash2, DollarSign, Shield, ShieldCheck, Calendar } from 'lucide-react';
 
@@ -52,6 +54,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const currentSession = getCurrentSession();
   const isAdminUser = isAdmin();
@@ -63,10 +66,14 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
       try {
         setLoading(true);
         
-        // Load financial users
-        const loadedFinancialUsers = await getUsers();
+        // Load financial users and transactions
+        const [loadedFinancialUsers, loadedTransactions] = await Promise.all([
+          getUsers(),
+          getTransactions()
+        ]);
         if (isMounted) {
           setFinancialUsers(loadedFinancialUsers);
+          setTransactions(loadedTransactions as Transaction[]);
         }
         
         // Only load account users if user is admin
@@ -99,7 +106,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
     };
   }, [isAdminUser]);
 
-  const handleFinancialUserSubmit = (e: React.FormEvent) => {
+  const handleFinancialUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -108,34 +115,21 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
       return;
     }
 
-    const existingUsers = getUsers();
-    
-    if (editingFinancialUser) {
-      // Update existing financial user
-      const updatedUsers = existingUsers.map(user =>
-        user.id === editingFinancialUser.id
-          ? { ...user, ...financialFormData, updatedAt: new Date().toISOString() }
-          : user
-      );
-      saveUsers(updatedUsers);
-      setEditingFinancialUser(null);
-    } else {
-      // Add new financial user
-      const newUser: User = {
-        id: `user-${Date.now()}`,
-        name: financialFormData.name,
-        email: financialFormData.email,
-        phone: financialFormData.phone,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      saveUsers([...existingUsers, newUser]);
+    try {
+      if (editingFinancialUser) {
+        await apiClient.updateFinancialUser(editingFinancialUser.id, financialFormData);
+      } else {
+        await apiClient.createFinancialUser(financialFormData);
+      }
       setIsAddFinancialDialogOpen(false);
+      setEditingFinancialUser(null);
+      setFinancialFormData({ name: '', email: '', phone: '' });
+      const updatedUsers = await getUsers();
+      setFinancialUsers(updatedUsers);
+      onDataChange();
+    } catch (e) {
+      setError('Failed to save user');
     }
-
-    setFinancialFormData({ name: '', email: '', phone: '' });
-    setFinancialUsers(getUsers());
-    onDataChange();
   };
 
   const handleAccountUserSubmit = (e: React.FormEvent) => {
@@ -204,8 +198,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
     });
   };
 
-  const handleDeleteFinancialUser = (userId: string) => {
-    const transactions = getTransactions();
+  const handleDeleteFinancialUser = async (userId: string) => {
     const hasTransactions = transactions.some(t => t.userId === userId);
     
     if (hasTransactions) {
@@ -213,10 +206,14 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
       return;
     }
 
-    const updatedUsers = financialUsers.filter(user => user.id !== userId);
-    saveUsers(updatedUsers);
-    setFinancialUsers(updatedUsers);
-    onDataChange();
+    try {
+      await apiClient.deleteFinancialUser(userId);
+      const updatedUsers = await getUsers();
+      setFinancialUsers(updatedUsers);
+      onDataChange();
+    } catch (e) {
+      setError('Failed to delete user');
+    }
   };
 
   const handleDeleteAccountUser = (userId: string) => {
@@ -242,12 +239,10 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
   };
 
   const getFinancialUserTransactionCount = (userId: string): number => {
-    const transactions = getTransactions();
     return transactions.filter(t => t.userId === userId).length;
   };
 
   const getFinancialUserTransactionTotal = (userId: string): number => {
-    const transactions = getTransactions();
     return transactions
       .filter(t => t.userId === userId)
       .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
