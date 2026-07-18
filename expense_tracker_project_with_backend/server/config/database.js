@@ -30,7 +30,23 @@ db.defaults({
     { id: 'cat-9',  name: 'Education',         color: '#87CEEB', icon: '📚', user_id: null },
     { id: 'cat-10', name: 'Other',             color: '#D3D3D3', icon: '📦', user_id: null },
   ],
+  // --- User settings (one row per user) ---
   settings: [],
+  // --- Loans ---
+  loans: [],
+  // --- Goals ---
+  goals: [],
+  // --- Financial Users (people/contacts for tagging transactions) ---
+  financial_users: [],
+  // --- Additional Info ---
+  // transaction_history: named items used as quick-pick references
+  transaction_history: [],
+  // rent_history: monthly rent payment records
+  rent_history: [],
+  // gadget_warranties: warranty tracking items
+  gadget_warranties: [],
+  // --- Voucher counters: { user_id, date_key, counter } ---
+  voucher_counters: [],
 }).write();
 
 console.log(`JSON database ready at: ${dbPath}`);

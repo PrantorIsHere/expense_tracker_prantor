@@ -52,13 +52,20 @@ export default function AdditionalInfoTab() {
   const [gadgetSearchTerm, setGadgetSearchTerm] = useState('');
 
   useEffect(() => {
-    setTxItems(getTransactionHistory());
-    setRentItems(getRentHistory());
-    setGadgetItems(getGadgetWarranties());
+    (async () => {
+      const [tx, rent, gadget] = await Promise.all([
+        getTransactionHistory(),
+        getRentHistory(),
+        getGadgetWarranties(),
+      ]);
+      setTxItems(tx);
+      setRentItems(rent);
+      setGadgetItems(gadget);
+    })();
   }, []);
 
   // Helpers
-  const addTxItem = () => {
+  const addTxItem = async () => {
     if (!newTxName || !newTxAmount) return;
     const item: TransactionHistoryItem = {
       id: `tx-${Date.now()}`,
@@ -67,24 +74,24 @@ export default function AdditionalInfoTab() {
     };
     const next = [...txItems, item];
     setTxItems(next);
-    saveTransactionHistory(next);
+    await saveTransactionHistory(next);
     setNewTxName('');
     setNewTxAmount('');
   };
 
-  const updateTxItem = (id: string, patch: Partial<TransactionHistoryItem>) => {
+  const updateTxItem = async (id: string, patch: Partial<TransactionHistoryItem>) => {
     const next = txItems.map((t) => (t.id === id ? { ...t, ...patch } : t));
     setTxItems(next);
-    saveTransactionHistory(next);
+    await saveTransactionHistory(next);
   };
 
-  const removeTxItem = (id: string) => {
+  const removeTxItem = async (id: string) => {
     const next = txItems.filter((t) => t.id !== id);
     setTxItems(next);
-    saveTransactionHistory(next);
+    await saveTransactionHistory(next);
   };
 
-  const addRentItem = () => {
+  const addRentItem = async () => {
     if (!newRentMonth || !newRentAmount || !newRentDate) return;
     const item: RentHistoryItem = {
       id: `rent-${Date.now()}`,
@@ -95,26 +102,26 @@ export default function AdditionalInfoTab() {
     };
     const next = [...rentItems, item];
     setRentItems(next);
-    saveRentHistory(next);
+    await saveRentHistory(next);
     setNewRentMonth('');
     setNewRentAmount('');
     setNewRentDate('');
     setNewRentNote('');
   };
 
-  const updateRentItem = (id: string, patch: Partial<RentHistoryItem>) => {
+  const updateRentItem = async (id: string, patch: Partial<RentHistoryItem>) => {
     const next = rentItems.map((r) => (r.id === id ? { ...r, ...patch } : r));
     setRentItems(next);
-    saveRentHistory(next);
+    await saveRentHistory(next);
   };
 
-  const removeRentItem = (id: string) => {
+  const removeRentItem = async (id: string) => {
     const next = rentItems.filter((r) => r.id !== id);
     setRentItems(next);
-    saveRentHistory(next);
+    await saveRentHistory(next);
   };
 
-  const addGadgetItem = () => {
+  const addGadgetItem = async () => {
     if (!newGadgetName || !newGadgetProductId || !newGadgetSerial || !newGadgetPurchaseDate || !newGadgetWarrantyMonths) return;
     const item: GadgetWarrantyItem = {
       id: `gadget-${Date.now()}`,
@@ -127,7 +134,7 @@ export default function AdditionalInfoTab() {
     };
     const next = [...gadgetItems, item];
     setGadgetItems(next);
-    saveGadgetWarranties(next);
+    await saveGadgetWarranties(next);
     setNewGadgetName('');
     setNewGadgetProductId('');
     setNewGadgetSerial('');
@@ -136,16 +143,16 @@ export default function AdditionalInfoTab() {
     setNewGadgetNote('');
   };
 
-  const updateGadgetItem = (id: string, patch: Partial<GadgetWarrantyItem>) => {
+  const updateGadgetItem = async (id: string, patch: Partial<GadgetWarrantyItem>) => {
     const next = gadgetItems.map((g) => (g.id === id ? { ...g, ...patch } : g));
     setGadgetItems(next);
-    saveGadgetWarranties(next);
+    await saveGadgetWarranties(next);
   };
 
-  const removeGadgetItem = (id: string) => {
+  const removeGadgetItem = async (id: string) => {
     const next = gadgetItems.filter((g) => g.id !== id);
     setGadgetItems(next);
-    saveGadgetWarranties(next);
+    await saveGadgetWarranties(next);
   };
 
   const getWarrantyEndDate = (item: GadgetWarrantyItem) => {

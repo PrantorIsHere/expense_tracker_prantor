@@ -68,10 +68,15 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     loadData();
   }, []);
 
-  const loadData = () => {
-    setTransactions(getTransactions());
-    setUsers(getUsers());
-    setCategories(getCategories());
+  const loadData = async () => {
+    const [txns, usrs, cats] = await Promise.all([
+      getTransactions(),
+      getUsers(),
+      getCategories(),
+    ]);
+    setTransactions(txns as Transaction[]);
+    setUsers(usrs as User[]);
+    setCategories(cats as Category[]);
   };
 
   const resetForm = () => {
@@ -87,7 +92,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     setEditingTransaction(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.title || !formData.amount || !formData.categoryId || !formData.userId) {
@@ -95,9 +100,10 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       return;
     }
 
+    const vId = editingTransaction?.voucherId || await generateVoucherId();
     const transactionData = {
       id: editingTransaction?.id || `transaction-${Date.now()}`,
-      voucherId: editingTransaction?.voucherId || generateVoucherId(),
+      voucherId: vId,
       title: formData.title,
       description: formData.description,
       amount: parseFloat(formData.amount),
@@ -114,7 +120,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       : [transactionData, ...transactions];
 
     setTransactions(updatedTransactions);
-    saveTransactions(updatedTransactions);
+    await saveTransactions(updatedTransactions);
     onDataChange();
     
     setIsDialogOpen(false);
@@ -135,11 +141,11 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this transaction?')) {
       const updatedTransactions = transactions.filter(t => t.id !== id);
       setTransactions(updatedTransactions);
-      saveTransactions(updatedTransactions);
+      await saveTransactions(updatedTransactions);
       onDataChange();
     }
   };

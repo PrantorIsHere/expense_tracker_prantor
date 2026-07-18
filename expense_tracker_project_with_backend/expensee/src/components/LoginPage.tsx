@@ -38,13 +38,13 @@ export default function LoginPage({ onAuthSuccess }: LoginPageProps) {
     setError('');
 
     try {
-      const session = loginUser(loginData.username, loginData.password);
+      const session = await loginUser(loginData.username, loginData.password);
       onAuthSuccess(session);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Login failed');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -79,7 +79,7 @@ export default function LoginPage({ onAuthSuccess }: LoginPageProps) {
     }
 
     try {
-      registerUser(registerData.username, registerData.email, registerData.password);
+      await registerUser(registerData.username, registerData.email, registerData.password);
       setSuccess('Account created successfully! You can now log in.');
       setRegisterData({
         username: '',
@@ -91,9 +91,9 @@ export default function LoginPage({ onAuthSuccess }: LoginPageProps) {
       });
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Registration failed');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   return (

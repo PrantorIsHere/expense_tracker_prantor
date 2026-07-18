@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { getTransactions, getCategories } from './storage';
+import { Transaction, Category } from '@/components/types';
+import { getUserSettingsSync } from './storage';
 
 type RGBColor = [number, number, number];
 
@@ -26,15 +27,11 @@ interface CategoryStat {
 
 function getCurrencyCode(): string {
   try {
-    const settings = localStorage.getItem('expense-tracker-settings');
-    if (settings) {
-      const parsed = JSON.parse(settings);
-      return parsed.currency || 'BDT';
-    }
+    const settings = getUserSettingsSync();
+    return (settings as any).currency || 'BDT';
   } catch {
-    // ignore malformed data and use fallback
+    return 'BDT';
   }
-  return 'BDT';
 }
 
 function formatAmount(n: number): string {
@@ -42,7 +39,7 @@ function formatAmount(n: number): string {
   return `${currency} ${n.toFixed(2)}`;
 }
 
-export function generateCategoryBreakdownPDF() {
+export function generateCategoryBreakdownPDF(transactions: Transaction[], categories: Category[]) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -108,8 +105,7 @@ export function generateCategoryBreakdownPDF() {
   doc.text('Category-wise Breakdown (All Time)', cardX + 140, cardY + 50);
   doc.text('All Transactions', cardX + 140, cardY + 65);
 
-  const transactions = getTransactions();
-  const categories = getCategories();
+  // Use the passed transactions and categories arrays directly
 
   const stats = categories.map((cat) => {
     const catTxs = transactions.filter((t) => t.categoryId === cat.id);

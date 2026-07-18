@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { Transaction, User, Category } from '@/components/types';
-import { getSettings } from './storage';
+import { getUserSettingsSync } from './storage';
 import { getCurrentSession } from './auth';
 
 interface ExtendedSettings {
@@ -16,7 +16,7 @@ interface ExtendedSettings {
 // Get currency code from settings
 function getCurrencyCode(): string {
   try {
-    const settings = getSettings();
+    const settings = getUserSettingsSync();
     return settings.currency || 'BDT';
   } catch (e) {
     return 'BDT';
@@ -26,7 +26,7 @@ function getCurrencyCode(): string {
 // Get software name from settings
 function getSoftwareName(): string {
   try {
-    const settings = getSettings() as ExtendedSettings;
+    const settings = getUserSettingsSync() as ExtendedSettings;
     return settings.softwareName || 'Expense Tracker';
   } catch (e) {
     return 'Expense Tracker';

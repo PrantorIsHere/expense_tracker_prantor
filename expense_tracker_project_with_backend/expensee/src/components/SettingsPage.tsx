@@ -75,50 +75,61 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   });
 
   useEffect(() => {
-    loadSettings();
-    loadCategories();
-    loadDataSummary();
+    (async () => {
+      await loadSettings();
+      await loadCategories();
+      await loadDataSummary();
+    })();
   }, []);
 
-  const loadSettings = () => {
-    const loadedSettings = getSettings() as AppSettings;
+  const loadSettings = async () => {
+    const loadedSettings = await getSettings() as AppSettings;
     setSettings({
       ...loadedSettings,
-      softwareName: loadedSettings.softwareName || 'Expense Tracker'
+      softwareName: (loadedSettings as AppSettings & { softwareName?: string }).softwareName || 'Expense Tracker'
     });
   };
 
-  const loadCategories = () => {
-    const loadedCategories = getCategories();
+  const loadCategories = async () => {
+    const loadedCategories = await getCategories();
     setCategories(loadedCategories);
   };
 
-  const loadDataSummary = () => {
+  const loadDataSummary = async () => {
+    const [txns, usrs, cats, lns, gls, txHistory, rentHist] = await Promise.all([
+      getTransactions(),
+      getUsers(),
+      getCategories(),
+      getLoans(),
+      getGoals(),
+      getTransactionHistory(),
+      getRentHistory(),
+    ]);
     setDataSummary({
-      transactions: getTransactions().length,
-      users: getUsers().length,
-      categories: getCategories().length,
-      loans: getLoans().length,
-      goals: getGoals().length,
-      transactionHistory: getTransactionHistory().length,
-      rentHistory: getRentHistory().length,
+      transactions: txns.length,
+      users: usrs.length,
+      categories: cats.length,
+      loans: lns.length,
+      goals: gls.length,
+      transactionHistory: txHistory.length,
+      rentHistory: rentHist.length,
     });
   };
 
-  const handleSaveSettings = () => {
-    saveSettings(settings);
+  const handleSaveSettings = async () => {
+    await saveSettings(settings);
     setMessage('Settings saved successfully!');
     setTimeout(() => setMessage(''), 3000);
     onDataChange();
   };
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!newCategoryName.trim()) {
       setError('Category name is required');
       return;
     }
 
-    const existingCategories = getCategories();
+    const existingCategories = await getCategories();
     if (existingCategories.some(cat => cat.name.toLowerCase() === newCategoryName.toLowerCase())) {
       setError('Category already exists');
       return;
@@ -132,11 +143,11 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     };
 
     const updatedCategories = [...existingCategories, newCategory];
-    saveCategories(updatedCategories);
+    await saveCategories(updatedCategories);
     setNewCategoryName('');
     setError('');
-    loadCategories();
-    loadDataSummary();
+    await loadCategories();
+    await loadDataSummary();
     onDataChange();
   };
 

@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AuthGuard from './components/AuthGuard';
 import Index from './components/pages/Index';
 import NotFound from './components/pages/NotFound';
-import { getSettings } from '@/lib/storage';
+import { getUserSettingsSync as getSettings } from '@/lib/storage';
 
 const queryClient = new QueryClient();
 

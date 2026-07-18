@@ -64,14 +64,14 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
         setLoading(true);
         
         // Load financial users
-        const loadedFinancialUsers = getUsers();
+        const loadedFinancialUsers = await getUsers();
         if (isMounted) {
           setFinancialUsers(loadedFinancialUsers);
         }
         
         // Only load account users if user is admin
         if (isAdminUser) {
-          const loadedAccountUsers = getAllUsers();
+          const loadedAccountUsers = await getAllUsers();
           if (isMounted) {
             setAccountUsers(loadedAccountUsers);
           }

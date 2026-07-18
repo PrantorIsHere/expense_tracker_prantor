@@ -8,7 +8,7 @@
     "lint": "eslint --quiet ./src",
     "preview": "vite preview",
     "dev:client": "vite",
-    "dev:server": "nodemon ../server/app.js",
+    "dev:server": "nodemon --watch ../server --ignore ../server/db/ ../server/app.js",
     "server": "node ../server/app.js",
     "db:setup": "psql -U root -h localhost -d expense_tracker -f ../schema.sql",
     "db:reset": "psql -U root -h localhost -d expense_tracker -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && pnpm run db:setup"

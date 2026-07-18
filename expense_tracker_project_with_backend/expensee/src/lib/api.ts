@@ -1,5 +1,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
+// ── Payload types ─────────────────────────────────────────────────────────────
+
 type TransactionPayload = {
   voucher_id?: string;
   title: string;
@@ -10,6 +12,56 @@ type TransactionPayload = {
   financial_user_id?: string | null;
   date: string;
 };
+
+type LoanPayload = {
+  person: string;
+  amount: number;
+  type: 'given' | 'taken';
+  description?: string | null;
+  date: string;
+  due_date?: string | null;
+  status?: 'pending' | 'paid' | 'partial';
+};
+
+type GoalPayload = {
+  name: string;
+  target_amount: number;
+  current_amount?: number;
+  description?: string | null;
+  deadline?: string | null;
+  color?: string;
+  icon?: string;
+};
+
+type FinancialUserPayload = {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  type?: string;
+  notes?: string | null;
+};
+
+type SettingsPayload = {
+  currency?: string;
+  dateFormat?: string;
+  theme?: string;
+  notifications?: boolean;
+  autoBackup?: boolean;
+};
+
+type TransactionHistoryItem = { id?: string; name: string; amount?: number };
+type RentHistoryItem = { id?: string; month: string; amount: number; date: string; deedNote?: string };
+type GadgetWarrantyItem = {
+  id?: string;
+  productId?: string;
+  serialNumber?: string;
+  name: string;
+  purchaseDate: string;
+  warrantyMonths?: number;
+  note?: string;
+};
+
+// ── API Client ────────────────────────────────────────────────────────────────
 
 class ApiClient {
   private token: string | null;
@@ -24,7 +76,7 @@ class ApiClient {
     else localStorage.removeItem('auth_token');
   }
 
-  private async request(endpoint: string, options: RequestInit = {}) {
+  private async request<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -36,44 +88,143 @@ class ApiClient {
       let message = res.statusText;
       try {
         const j: unknown = await res.json();
-        if (j && typeof j === 'object' && 'error' in j && typeof j.error === 'string') {
-          message = j.error;
+        if (j && typeof j === 'object' && 'error' in j && typeof (j as { error: string }).error === 'string') {
+          message = (j as { error: string }).error;
         }
       } catch {
         message = res.statusText;
       }
       throw new Error(message);
     }
-    if (res.status === 204) return null;
-    return res.json();
+    if (res.status === 204) return null as T;
+    return res.json() as Promise<T>;
   }
 
-  // Auth
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
   async login(username: string, password: string) {
-    const data = await this.request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    const data = await this.request<{ token: string; user: Record<string, unknown> }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
     this.setToken(data.token);
     localStorage.setItem('auth_user', JSON.stringify(data.user));
     return data;
   }
-  async register(user: { username: string; email: string; password: string; name: string; }) {
-    const data = await this.request('/auth/register', { method: 'POST', body: JSON.stringify(user) });
+
+  async register(user: { username: string; email: string; password: string; name: string }) {
+    const data = await this.request<{ token: string; user: Record<string, unknown> }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(user),
+    });
     this.setToken(data.token);
     localStorage.setItem('auth_user', JSON.stringify(data.user));
     return data;
   }
+
   async me() {
     return this.request('/auth/me');
   }
-  logout() { this.setToken(null); }
 
-  // Transactions
+  logout() {
+    this.setToken(null);
+    localStorage.removeItem('auth_user');
+  }
+
+  // ── Transactions ──────────────────────────────────────────────────────────
+
   async getTransactions() { return this.request('/transactions'); }
-  async createTransaction(tx: TransactionPayload) { return this.request('/transactions', { method: 'POST', body: JSON.stringify(tx) }); }
-  async updateTransaction(id: string, tx: Partial<TransactionPayload>) { return this.request(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(tx) }); }
-  async deleteTransaction(id: string) { return this.request(`/transactions/${id}`, { method: 'DELETE' }); }
+  async createTransaction(tx: TransactionPayload) {
+    return this.request('/transactions', { method: 'POST', body: JSON.stringify(tx) });
+  }
+  async updateTransaction(id: string, tx: Partial<TransactionPayload>) {
+    return this.request(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(tx) });
+  }
+  async deleteTransaction(id: string) {
+    return this.request(`/transactions/${id}`, { method: 'DELETE' });
+  }
 
-  // Categories
+  // ── Categories ────────────────────────────────────────────────────────────
+
   async getCategories() { return this.request('/categories'); }
+
+  // ── Loans ─────────────────────────────────────────────────────────────────
+
+  async getLoans() { return this.request('/loans'); }
+  async createLoan(loan: LoanPayload) {
+    return this.request('/loans', { method: 'POST', body: JSON.stringify(loan) });
+  }
+  async updateLoan(id: string, loan: Partial<LoanPayload>) {
+    return this.request(`/loans/${id}`, { method: 'PUT', body: JSON.stringify(loan) });
+  }
+  async deleteLoan(id: string) {
+    return this.request(`/loans/${id}`, { method: 'DELETE' });
+  }
+
+  // ── Goals ─────────────────────────────────────────────────────────────────
+
+  async getGoals() { return this.request('/goals'); }
+  async createGoal(goal: GoalPayload) {
+    return this.request('/goals', { method: 'POST', body: JSON.stringify(goal) });
+  }
+  async updateGoal(id: string, goal: Partial<GoalPayload>) {
+    return this.request(`/goals/${id}`, { method: 'PUT', body: JSON.stringify(goal) });
+  }
+  async deleteGoal(id: string) {
+    return this.request(`/goals/${id}`, { method: 'DELETE' });
+  }
+
+  // ── Financial Users (Contacts) ────────────────────────────────────────────
+
+  async getFinancialUsers() { return this.request('/financial-users'); }
+  async createFinancialUser(fu: FinancialUserPayload) {
+    return this.request('/financial-users', { method: 'POST', body: JSON.stringify(fu) });
+  }
+  async updateFinancialUser(id: string, fu: Partial<FinancialUserPayload>) {
+    return this.request(`/financial-users/${id}`, { method: 'PUT', body: JSON.stringify(fu) });
+  }
+  async deleteFinancialUser(id: string) {
+    return this.request(`/financial-users/${id}`, { method: 'DELETE' });
+  }
+
+  // ── Settings ──────────────────────────────────────────────────────────────
+
+  async getSettings() { return this.request('/settings'); }
+  async updateSettings(settings: SettingsPayload) {
+    return this.request('/settings', { method: 'PUT', body: JSON.stringify(settings) });
+  }
+  async importData(data: unknown) {
+    return this.request('/settings/import', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  // ── Additional Info — Transaction History ─────────────────────────────────
+
+  async getAdditionalInfoTransactions() { return this.request('/additional-info/transactions'); }
+  async saveAdditionalInfoTransactions(items: TransactionHistoryItem[]) {
+    return this.request('/additional-info/transactions', { method: 'POST', body: JSON.stringify({ items }) });
+  }
+
+  // ── Additional Info — Rent History ────────────────────────────────────────
+
+  async getRentHistory() { return this.request('/additional-info/rent'); }
+  async saveRentHistory(items: RentHistoryItem[]) {
+    return this.request('/additional-info/rent', { method: 'POST', body: JSON.stringify({ items }) });
+  }
+
+  // ── Additional Info — Gadget Warranties ───────────────────────────────────
+
+  async getGadgetWarranties() { return this.request('/additional-info/gadgets'); }
+  async saveGadgetWarranties(items: GadgetWarrantyItem[]) {
+    return this.request('/additional-info/gadgets', { method: 'POST', body: JSON.stringify({ items }) });
+  }
+
+  // ── Vouchers ──────────────────────────────────────────────────────────────
+
+  /** Returns the next voucher ID string for today (server-side counter). */
+  async nextVoucherId(): Promise<string> {
+    const data = await this.request<{ voucher_id: string }>('/vouchers/next', { method: 'POST' });
+    return data.voucher_id;
+  }
 }
 
 export const apiClient = new ApiClient();

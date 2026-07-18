@@ -38,8 +38,18 @@ router.post('/register', async (req, res) => {
 
     db.get('users').push(newUser).write();
 
-    // Default settings
-    db.get('settings').push({ id: uuidv4(), user_id: userId, created_at: now }).write();
+    // Default settings (full row with all fields)
+    db.get('settings').push({
+      id: uuidv4(),
+      user_id: userId,
+      currency: 'USD',
+      dateFormat: 'MM/DD/YYYY',
+      theme: 'light',
+      notifications: true,
+      autoBackup: false,
+      created_at: now,
+      updated_at: now,
+    }).write();
 
     const token = jwt.sign(
       { userId: newUser.id, username: newUser.username },

@@ -53,11 +53,17 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     setCurrentPage(1);
   }, [searchTerm, filterType, filterStatus]);
 
-  const loadData = () => {
-    setLoans(getLoans());
-    setTransactions(getTransactions());
-    setUsers(getUsers());
-    setCategories(getCategories());
+  const loadData = async () => {
+    const [lns, txns, usrs, cats] = await Promise.all([
+      getLoans(),
+      getTransactions(),
+      getUsers(),
+      getCategories(),
+    ]);
+    setLoans(lns as Loan[]);
+    setTransactions(txns as Transaction[]);
+    setUsers(usrs as User[]);
+    setCategories(cats as Category[]);
   };
 
   const resetForm = () => {

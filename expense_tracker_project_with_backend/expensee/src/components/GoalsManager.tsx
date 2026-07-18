@@ -53,9 +53,13 @@ export default function GoalsManager({ onDataChange }: GoalsManagerProps) {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setGoals(getGoals());
-    setTransactions(getTransactions());
+  const loadData = async () => {
+    const [gls, txns] = await Promise.all([
+      getGoals(),
+      getTransactions(),
+    ]);
+    setGoals(gls as Goal[]);
+    setTransactions(txns as Transaction[]);
   };
 
   // Calculate financial insights from transactions

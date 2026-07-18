@@ -49,12 +49,19 @@ export default function Index() {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setTransactions(getTransactions());
-    setUsers(getUsers());
-    setCategories(getCategories());
-    setLoans(getLoans());
-    setGoals(getGoals());
+  const loadData = async () => {
+    const [txns, usrs, cats, lns, gls] = await Promise.all([
+      getTransactions(),
+      getUsers(),
+      getCategories(),
+      getLoans(),
+      getGoals(),
+    ]);
+    setTransactions(txns as Transaction[]);
+    setUsers(usrs as User[]);
+    setCategories(cats as Category[]);
+    setLoans(lns as Loan[]);
+    setGoals(gls as Goal[]);
   };
 
   // Calculate financial metrics
@@ -612,4 +619,3 @@ export default function Index() {
     </div>
   );
 }
-

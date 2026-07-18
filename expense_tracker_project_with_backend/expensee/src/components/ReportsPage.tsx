@@ -31,11 +31,20 @@ export default function ReportsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
 
   useEffect(() => {
-    setTransactions(getTransactions());
-    setCategories(getCategories());
-    setUsers(getUsers());
-    setLoans(getLoans());
-    setGoals(getGoals());
+    (async () => {
+      const [txns, cats, usrs, lns, gls] = await Promise.all([
+        getTransactions(),
+        getCategories(),
+        getUsers(),
+        getLoans(),
+        getGoals()
+      ]);
+      setTransactions(txns as Transaction[]);
+      setCategories(cats as Category[]);
+      setUsers(usrs as User[]);
+      setLoans(lns as Loan[]);
+      setGoals(gls as Goal[]);
+    })();
   }, []);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82ca9d', '#ef4444', '#10b981', '#6366f1', '#f59e0b'];
@@ -630,7 +639,7 @@ export default function ReportsPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Category-wise Breakdown (All Time)</CardTitle>
-          <Button onClick={generateCategoryBreakdownPDF} variant="outline" size="sm">
+          <Button onClick={() => generateCategoryBreakdownPDF(transactions, categories)} variant="outline" size="sm">
             <FileText className="mr-2 h-4 w-4" />
             Export PDF Report
           </Button>

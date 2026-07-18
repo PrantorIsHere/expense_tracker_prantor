@@ -3,7 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 const allowedOriginPatterns = [
@@ -36,16 +37,25 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.get('/api/health', (req, res) => res.json({ status: 'OK', ts: new Date().toISOString() }));
 
-app.use('/api/auth', require('./routes/auth'));
+// ── Core routes ──────────────────────────────────────────────────────────────
+app.use('/api/auth',         require('./routes/auth'));
 app.use('/api/transactions', require('./routes/transactions'));
-app.use('/api/categories', require('./routes/categories'));
+app.use('/api/categories',   require('./routes/categories'));
+
+// ── Extended user-data routes (all server-side, no more localStorage) ────────
+app.use('/api/loans',            require('./routes/loans'));
+app.use('/api/goals',            require('./routes/goals'));
+app.use('/api/financial-users',  require('./routes/financialUsers'));
+app.use('/api/settings',         require('./routes/settings'));
+app.use('/api/additional-info',  require('./routes/additionalInfo'));
+app.use('/api/vouchers',         require('./routes/vouchers'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.use('*', (req,res)=> res.status(404).json({ error: 'Route not found' }));
+app.use('*', (req,res) => res.status(404).json({ error: 'Route not found' }));
 
 const PORT = process.env.API_PORT || 3001;
 const HOST = process.env.API_HOST || '0.0.0.0';

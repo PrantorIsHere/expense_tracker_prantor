@@ -1,4 +1,13 @@
-import { getCurrentSession } from './auth';
+/**
+ * additionalInfoStorage.ts — Server-backed additional info storage.
+ *
+ * All data is now stored in server/db/data.json.
+ * localStorage is no longer used. All functions are async.
+ */
+
+import { apiClient } from './api';
+
+// ── Types (unchanged — shared with components) ────────────────────────────────
 
 export type TransactionHistoryItem = {
   id: string;
@@ -10,7 +19,7 @@ export type RentHistoryItem = {
   id: string;
   month: string;
   amount: number;
-  date: string; // ISO date string
+  date: string;
   deedNote: string;
 };
 
@@ -19,92 +28,100 @@ export type GadgetWarrantyItem = {
   productId: string;
   serialNumber: string;
   name: string;
-  purchaseDate: string; // ISO date string
+  purchaseDate: string;
   warrantyMonths: number;
   note: string;
 };
 
-// Get user-specific storage key
-const getUserKey = (baseKey: string): string => {
-  const session = getCurrentSession();
-  const userId = session?.userId;
-  if (!userId) {
-    // Fallback to non-user-specific key for backward compatibility
-    return baseKey;
-  }
-  return `${baseKey}_${userId}`;
-};
+// ── Transaction History ───────────────────────────────────────────────────────
 
-const TX_KEY = 'additional_info_transaction_history';
-const RENT_KEY = 'additional_info_rent_history';
-const GADGET_KEY = 'additional_info_gadget_warranties';
-
-function readLocal<T>(key: string, fallback: T): T {
+export async function getTransactionHistory(): Promise<TransactionHistoryItem[]> {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+    return (await apiClient.getAdditionalInfoTransactions()) as TransactionHistoryItem[];
+  } catch (e) {
+    console.error('getTransactionHistory error:', e);
+    return [];
   }
 }
 
-function writeLocal<T>(key: string, data: T) {
-  localStorage.setItem(key, JSON.stringify(data));
+export async function saveTransactionHistory(items: TransactionHistoryItem[]): Promise<void> {
+  try {
+    await apiClient.saveAdditionalInfoTransactions(items);
+  } catch (e) {
+    console.error('saveTransactionHistory error:', e);
+  }
 }
 
-export function getTransactionHistory(): TransactionHistoryItem[] {
-  return readLocal<TransactionHistoryItem[]>(getUserKey(TX_KEY), []);
+// ── Rent History ──────────────────────────────────────────────────────────────
+
+export async function getRentHistory(): Promise<RentHistoryItem[]> {
+  try {
+    return (await apiClient.getRentHistory()) as RentHistoryItem[];
+  } catch (e) {
+    console.error('getRentHistory error:', e);
+    return [];
+  }
 }
 
-export function saveTransactionHistory(items: TransactionHistoryItem[]) {
-  writeLocal<TransactionHistoryItem[]>(getUserKey(TX_KEY), items);
+export async function saveRentHistory(items: RentHistoryItem[]): Promise<void> {
+  try {
+    await apiClient.saveRentHistory(items);
+  } catch (e) {
+    console.error('saveRentHistory error:', e);
+  }
 }
 
-export function getRentHistory(): RentHistoryItem[] {
-  return readLocal<RentHistoryItem[]>(getUserKey(RENT_KEY), []);
+// ── Gadget Warranties ─────────────────────────────────────────────────────────
+
+export async function getGadgetWarranties(): Promise<GadgetWarrantyItem[]> {
+  try {
+    return (await apiClient.getGadgetWarranties()) as GadgetWarrantyItem[];
+  } catch (e) {
+    console.error('getGadgetWarranties error:', e);
+    return [];
+  }
 }
 
-export function saveRentHistory(items: RentHistoryItem[]) {
-  writeLocal<RentHistoryItem[]>(getUserKey(RENT_KEY), items);
+export async function saveGadgetWarranties(items: GadgetWarrantyItem[]): Promise<void> {
+  try {
+    await apiClient.saveGadgetWarranties(items);
+  } catch (e) {
+    console.error('saveGadgetWarranties error:', e);
+  }
 }
 
-export function getGadgetWarranties(): GadgetWarrantyItem[] {
-  return readLocal<GadgetWarrantyItem[]>(getUserKey(GADGET_KEY), []);
+// ── Legacy shims for export/import functions that pass userId ─────────────────
+// These delegate to the current user's server data (userId param is ignored
+// because the JWT token on the server already scopes the data).
+
+export async function getTransactionHistoryForUser(_userId: string): Promise<TransactionHistoryItem[]> {
+  return getTransactionHistory();
 }
 
-export function saveGadgetWarranties(items: GadgetWarrantyItem[]) {
-  writeLocal<GadgetWarrantyItem[]>(getUserKey(GADGET_KEY), items);
+export async function saveTransactionHistoryForUser(_userId: string, items: TransactionHistoryItem[]): Promise<void> {
+  return saveTransactionHistory(items);
 }
 
-// For export/import - get raw data with explicit userId
-export function getTransactionHistoryForUser(userId: string): TransactionHistoryItem[] {
-  return readLocal<TransactionHistoryItem[]>(`${TX_KEY}_${userId}`, []);
+export async function getRentHistoryForUser(_userId: string): Promise<RentHistoryItem[]> {
+  return getRentHistory();
 }
 
-export function saveTransactionHistoryForUser(userId: string, items: TransactionHistoryItem[]) {
-  writeLocal<TransactionHistoryItem[]>(`${TX_KEY}_${userId}`, items);
+export async function saveRentHistoryForUser(_userId: string, items: RentHistoryItem[]): Promise<void> {
+  return saveRentHistory(items);
 }
 
-export function getRentHistoryForUser(userId: string): RentHistoryItem[] {
-  return readLocal<RentHistoryItem[]>(`${RENT_KEY}_${userId}`, []);
+export async function getGadgetWarrantiesForUser(_userId: string): Promise<GadgetWarrantyItem[]> {
+  return getGadgetWarranties();
 }
 
-export function saveRentHistoryForUser(userId: string, items: RentHistoryItem[]) {
-  writeLocal<RentHistoryItem[]>(`${RENT_KEY}_${userId}`, items);
+export async function saveGadgetWarrantiesForUser(_userId: string, items: GadgetWarrantyItem[]): Promise<void> {
+  return saveGadgetWarranties(items);
 }
 
-export function getGadgetWarrantiesForUser(userId: string): GadgetWarrantyItem[] {
-  return readLocal<GadgetWarrantyItem[]>(`${GADGET_KEY}_${userId}`, []);
-}
-
-export function saveGadgetWarrantiesForUser(userId: string, items: GadgetWarrantyItem[]) {
-  writeLocal<GadgetWarrantyItem[]>(`${GADGET_KEY}_${userId}`, items);
-}
-
-// Reset additional info for a user
-export function resetAdditionalInfoForUser(userId: string) {
-  localStorage.removeItem(`${TX_KEY}_${userId}`);
-  localStorage.removeItem(`${RENT_KEY}_${userId}`);
-  localStorage.removeItem(`${GADGET_KEY}_${userId}`);
+export async function resetAdditionalInfoForUser(_userId: string): Promise<void> {
+  await Promise.all([
+    apiClient.saveAdditionalInfoTransactions([]),
+    apiClient.saveRentHistory([]),
+    apiClient.saveGadgetWarranties([]),
+  ]);
 }
