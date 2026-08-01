@@ -7,28 +7,33 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-  getTransactions, 
-  saveTransactions, 
-  getLoans, 
-  saveLoans, 
-  getUsers, 
-  getCategories,
-  generateVoucherId, 
-  formatCurrency 
-} from '@/lib/storage';
-import { Transaction, Loan, User, Category } from '@/components/types';
+import { apiClient } from '@/lib/api';
+import { getUsers, formatCurrency } from '@/lib/storage';
+import { User } from '@/components/types';
 import { Plus, CheckCircle, Clock, TrendingUp, TrendingDown, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface LoansManagerProps {
   onDataChange: () => void;
 }
 
+// Loan as returned from the server (snake_case)
+interface ServerLoan {
+  id: string;
+  user_id: string;
+  person: string;
+  amount: number;
+  type: 'given' | 'taken';
+  description: string | null;
+  date: string;
+  due_date: string | null;
+  status: 'pending' | 'paid' | 'partial';
+  created_at: string;
+  updated_at: string;
+}
+
 export default function LoansManager({ onDataChange }: LoansManagerProps) {
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loans, setLoans] = useState<ServerLoan[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -54,16 +59,16 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   }, [searchTerm, filterType, filterStatus]);
 
   const loadData = async () => {
-    const [lns, txns, usrs, cats] = await Promise.all([
-      getLoans(),
-      getTransactions(),
-      getUsers(),
-      getCategories(),
-    ]);
-    setLoans(lns as Loan[]);
-    setTransactions(txns as Transaction[]);
-    setUsers(usrs as User[]);
-    setCategories(cats as Category[]);
+    try {
+      const [rawLoans, usrs] = await Promise.all([
+        apiClient.getLoans(),
+        getUsers(),
+      ]);
+      setLoans(rawLoans as ServerLoan[]);
+      setUsers(usrs as User[]);
+    } catch (e) {
+      console.error('LoansManager loadData error', e);
+    }
   };
 
   const resetForm = () => {
@@ -77,112 +82,56 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     });
   };
 
-  const getDefaultLoanCategory = () => {
-    // Try to find a loan category, otherwise use the first available category
-    const loanCategory = categories.find(c => c.name.toLowerCase().includes('loan'));
-    return loanCategory?.id || categories[0]?.id || 'default-category';
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.userId || !formData.amount || !formData.title) {
       alert('Please fill in all required fields');
       return;
     }
 
-    const voucherId = generateVoucherId();
-    const transactionId = `loan-${Date.now()}`;
-    
-    // Create transaction that affects balance correctly
-    const newTransaction: Transaction = {
-      id: transactionId,
-      voucherId,
-      title: formData.title,
-      description: formData.description,
-      amount: parseFloat(formData.amount),
-      // Fix: Loan Given = Expense (decreases balance), Loan Taken = Income (increases balance)
-      type: formData.type === 'given' ? 'expense' : 'income',
-      categoryId: getDefaultLoanCategory(),
-      userId: formData.userId,
-      date: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    // person = the name of the selected financial user
+    const selectedUser = users.find(u => u.id === formData.userId);
+    if (!selectedUser) {
+      alert('Selected user not found');
+      return;
+    }
 
-    // Create loan record
-    const newLoan: Loan = {
-      id: `loan-${Date.now()}`,
-      transactionId,
-      userId: formData.userId,
-      amount: parseFloat(formData.amount),
-      type: formData.type,
-      status: 'pending',
-      dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined,
-      createdAt: new Date().toISOString()
-    };
+    try {
+      await apiClient.createLoan({
+        person:      selectedUser.name,
+        amount:      parseFloat(formData.amount),
+        type:        formData.type,
+        description: formData.description || formData.title,
+        date:        new Date().toISOString(),
+        due_date:    formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
+        status:      'pending',
+      });
 
-    const updatedTransactions = [newTransaction, ...transactions];
-    const updatedLoans = [newLoan, ...loans];
-
-    setTransactions(updatedTransactions);
-    setLoans(updatedLoans);
-    saveTransactions(updatedTransactions);
-    saveLoans(updatedLoans);
-    onDataChange();
-    
-    setIsDialogOpen(false);
-    resetForm();
+      await loadData();
+      onDataChange();
+      setIsDialogOpen(false);
+      resetForm();
+    } catch (err) {
+      alert(`Failed to create loan: ${(err as Error).message}`);
+    }
   };
 
-  const handleRepayLoan = (loanId: string) => {
-    if (confirm('Mark this loan as repaid? This will update your balance accordingly.')) {
-      const loan = loans.find(l => l.id === loanId);
-      if (!loan) return;
-
-      const originalTransaction = transactions.find(t => t.id === loan.transactionId);
-      if (!originalTransaction) return;
-
-      // Create repayment transaction that affects balance correctly
-      const repaymentVoucherId = generateVoucherId();
-      const repaymentTransactionId = `repayment-${Date.now()}`;
-      
-      const repaymentTransaction: Transaction = {
-        id: repaymentTransactionId,
-        voucherId: repaymentVoucherId,
-        title: `Loan Repayment: ${originalTransaction.title}`,
-        description: `Repayment of loan: ${originalTransaction.description || originalTransaction.title}`,
-        amount: loan.amount,
-        // Fix: Loan Given Repayment = Income (increases balance), Loan Taken Repayment = Expense (decreases balance)
-        type: loan.type === 'given' ? 'income' : 'expense',
-        categoryId: originalTransaction.categoryId,
-        userId: loan.userId,
-        date: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      // Update loan status
-      const updatedLoans = loans.map(l => 
-        l.id === loanId 
-          ? { ...l, status: 'repaid' as const, repaidDate: new Date().toISOString() }
-          : l
-      );
-
-      // Add repayment transaction
-      const updatedTransactions = [repaymentTransaction, ...transactions];
-      
-      setLoans(updatedLoans);
-      setTransactions(updatedTransactions);
-      saveLoans(updatedLoans);
-      saveTransactions(updatedTransactions);
-      onDataChange();
+  const handleRepayLoan = async (loanId: string) => {
+    if (confirm('Mark this loan as repaid?')) {
+      try {
+        await apiClient.updateLoan(loanId, { status: 'paid' });
+        await loadData();
+        onDataChange();
+      } catch (err) {
+        alert(`Failed to update loan: ${(err as Error).message}`);
+      }
     }
   };
 
   const getLoansSummary = () => {
     const pendingLoans = loans.filter(l => l.status === 'pending');
-    
+
     const totalGiven = pendingLoans
       .filter(l => l.type === 'given')
       .reduce((sum, l) => sum + l.amount, 0);
@@ -196,36 +145,29 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     return { totalGiven, totalTaken, netPosition };
   };
 
-  const getLoansWithUserInfo = () => {
-    return loans.map(loan => ({
-      ...loan,
-      user: users.find(u => u.id === loan.userId),
-      transaction: transactions.find(t => t.id === loan.transactionId)
-    })).sort((a, b) => {
-      // Sort by status (pending first) then by date (newest first)
-      if (a.status !== b.status) {
-        return a.status === 'pending' ? -1 : 1;
-      }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  };
-
-  const filteredLoans = getLoansWithUserInfo().filter((loan) => {
+  const filteredLoans = loans.filter((loan) => {
     const searchValue = searchTerm.toLowerCase();
-    const title = loan.transaction?.title?.toLowerCase() || '';
-    const description = loan.transaction?.description?.toLowerCase() || '';
-    const userName = loan.user?.name?.toLowerCase() || '';
+    const person = loan.person?.toLowerCase() || '';
+    const description = loan.description?.toLowerCase() || '';
 
     const matchesSearch =
       !searchValue ||
-      title.includes(searchValue) ||
-      description.includes(searchValue) ||
-      userName.includes(searchValue);
+      person.includes(searchValue) ||
+      description.includes(searchValue);
 
     const matchesType = filterType === 'all' || loan.type === filterType;
-    const matchesStatus = filterStatus === 'all' || loan.status === filterStatus;
+    // server status: 'pending' | 'paid' | 'partial'; UI filter also uses 'repaid' as alias for 'paid'
+    const matchesStatus =
+      filterStatus === 'all' ||
+      loan.status === filterStatus ||
+      (filterStatus === 'repaid' && loan.status === 'paid');
 
     return matchesSearch && matchesType && matchesStatus;
+  }).sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === 'pending' ? -1 : 1;
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
   const totalPages = Math.ceil(filteredLoans.length / itemsPerPage);
@@ -277,9 +219,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="title">Title *</Label>
+                <Label htmlFor="loanTitle">Title / Purpose *</Label>
                 <Input
-                  id="title"
+                  id="loanTitle"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="Loan title/purpose"
@@ -288,9 +230,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
               </div>
 
               <div>
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="loanDescription">Description</Label>
                 <Input
-                  id="description"
+                  id="loanDescription"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Optional description"
@@ -299,9 +241,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="amount">Amount (৳) *</Label>
+                  <Label htmlFor="loanAmount">Amount (৳) *</Label>
                   <Input
-                    id="amount"
+                    id="loanAmount"
                     type="number"
                     step="0.01"
                     value={formData.amount}
@@ -312,25 +254,25 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                 </div>
 
                 <div>
-                  <Label htmlFor="type">Type *</Label>
-                  <Select 
-                    value={formData.type} 
+                  <Label htmlFor="loanType">Type *</Label>
+                  <Select
+                    value={formData.type}
                     onValueChange={(value: 'given' | 'taken') => setFormData({ ...formData, type: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="loanType">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="given">
                         <div className="flex flex-col">
                           <span>Loan Given</span>
-                          <span className="text-xs text-muted-foreground">Money out (decreases balance)</span>
+                          <span className="text-xs text-muted-foreground">Money you lent out</span>
                         </div>
                       </SelectItem>
                       <SelectItem value="taken">
                         <div className="flex flex-col">
                           <span>Loan Taken</span>
-                          <span className="text-xs text-muted-foreground">Money in (increases balance)</span>
+                          <span className="text-xs text-muted-foreground">Money you borrowed</span>
                         </div>
                       </SelectItem>
                     </SelectContent>
@@ -339,9 +281,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
               </div>
 
               <div>
-                <Label htmlFor="user">User *</Label>
+                <Label htmlFor="loanUser">Contact Person *</Label>
                 <Select value={formData.userId} onValueChange={(value) => setFormData({ ...formData, userId: value })}>
-                  <SelectTrigger>
+                  <SelectTrigger id="loanUser">
                     <SelectValue placeholder="Select user" />
                   </SelectTrigger>
                   <SelectContent>
@@ -366,9 +308,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
               </div>
 
               <div>
-                <Label htmlFor="dueDate">Due Date (Optional)</Label>
+                <Label htmlFor="loanDueDate">Due Date (Optional)</Label>
                 <Input
-                  id="dueDate"
+                  id="loanDueDate"
                   type="date"
                   value={formData.dueDate}
                   onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
@@ -389,7 +331,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       </div>
 
       {/* Info Alert */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <div className="flex">
           <div className="flex-shrink-0">
             <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
@@ -397,12 +339,10 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
             </svg>
           </div>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">How Loan Balance Works</h3>
-            <div className="mt-2 text-sm text-blue-700">
-              <p><strong>Loan Given:</strong> Decreases your balance (money going out)</p>
-              <p><strong>Loan Repaid:</strong> Increases your balance (money coming back)</p>
-              <p><strong>Loan Taken:</strong> Increases your balance (money coming in)</p>
-              <p><strong>Loan Paid Back:</strong> Decreases your balance (money going out)</p>
+            <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">How Loans Work</h3>
+            <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
+              <p><strong>Loan Given:</strong> Money you lent to someone else (pending repayment)</p>
+              <p><strong>Loan Taken:</strong> Money you borrowed from someone (you owe this)</p>
             </div>
           </div>
         </div>
@@ -473,7 +413,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="loan-search"
-                  placeholder="Title, note, or user"
+                  placeholder="Person name or note"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-8"
@@ -504,7 +444,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="repaid">Repaid</SelectItem>
+                  <SelectItem value="paid">Repaid / Paid</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -532,9 +472,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
-                      <TableHead>Title</TableHead>
+                      <TableHead>Person</TableHead>
+                      <TableHead>Description</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>User</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
@@ -545,35 +485,32 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                     {currentLoans.map((loan) => (
                       <TableRow key={loan.id}>
                         <TableCell>
-                          {new Date(loan.createdAt).toLocaleDateString()}
+                          {new Date(loan.date || loan.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{loan.transaction?.title}</p>
-                            {loan.transaction?.description && (
-                              <p className="text-sm text-muted-foreground">{loan.transaction.description}</p>
-                            )}
-                          </div>
+                          <p className="font-medium">{loan.person}</p>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm text-muted-foreground">{loan.description || '—'}</p>
                         </TableCell>
                         <TableCell>
                           <Badge variant={loan.type === 'given' ? 'default' : 'destructive'}>
                             {loan.type === 'given' ? 'GIVEN' : 'TAKEN'}
                           </Badge>
                         </TableCell>
-                        <TableCell>{loan.user?.name || 'Unknown'}</TableCell>
                         <TableCell className={`font-medium ${
-                          loan.type === 'given' ? 'text-red-600' : 'text-green-600'
+                          loan.type === 'given' ? 'text-green-600' : 'text-red-600'
                         }`}>
                           {formatCurrency(loan.amount)}
                         </TableCell>
                         <TableCell>
-                          {loan.dueDate ? (
+                          {loan.due_date ? (
                             <span className={
-                              new Date(loan.dueDate) < new Date() && loan.status === 'pending'
+                              new Date(loan.due_date) < new Date() && loan.status === 'pending'
                                 ? 'text-red-600 font-medium'
                                 : ''
                             }>
-                              {new Date(loan.dueDate).toLocaleDateString()}
+                              {new Date(loan.due_date).toLocaleDateString()}
                             </span>
                           ) : (
                             <span className="text-muted-foreground">No due date</span>
@@ -589,7 +526,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                             ) : (
                               <>
                                 <CheckCircle className="mr-1 h-3 w-3" />
-                                REPAID
+                                {loan.status.toUpperCase()}
                               </>
                             )}
                           </Badge>
@@ -605,9 +542,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                               Mark Repaid
                             </Button>
                           )}
-                          {loan.status === 'repaid' && loan.repaidDate && (
+                          {loan.status !== 'pending' && (
                             <span className="text-sm text-muted-foreground">
-                              Repaid: {new Date(loan.repaidDate).toLocaleDateString()}
+                              {loan.status === 'paid' ? 'Paid' : loan.status}
                             </span>
                           )}
                         </TableCell>
@@ -665,7 +602,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
             <div className="text-center py-8 text-gray-500">
               <p className="text-lg font-medium">No loans found</p>
               <p className="text-sm">
-                {users.length === 0 
+                {users.length === 0
                   ? "Add users first, then create your first loan"
                   : loans.length > 0
                   ? "No loans match your current filters"

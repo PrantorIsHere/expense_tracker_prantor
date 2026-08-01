@@ -22,7 +22,7 @@ router.get('/', authenticateToken, (req, res) => {
 // POST /api/goals — create a goal
 router.post('/', authenticateToken, (req, res) => {
   try {
-    const { name, target_amount, current_amount, description, deadline, color, icon } = req.body;
+    const { name, target_amount, current_amount, description, deadline, color, icon, priority, status } = req.body;
     if (!name || target_amount === undefined) {
       return res.status(400).json({ error: 'name and target_amount are required' });
     }
@@ -37,6 +37,8 @@ router.post('/', authenticateToken, (req, res) => {
       deadline:       deadline || null,
       color:          color || '#4ECDC4',
       icon:           icon || '🎯',
+      priority:       priority || 'medium',
+      status:         status || 'active',
       created_at:     now,
       updated_at:     now,
     };
@@ -55,7 +57,7 @@ router.put('/:id', authenticateToken, (req, res) => {
     const goal = db.get('goals').find({ id, user_id: req.user.id }).value();
     if (!goal) return res.status(404).json({ error: 'Goal not found' });
 
-    const { name, target_amount, current_amount, description, deadline, color, icon } = req.body;
+    const { name, target_amount, current_amount, description, deadline, color, icon, priority, status } = req.body;
     const updated = {
       ...goal,
       name:           name           ?? goal.name,
@@ -65,6 +67,8 @@ router.put('/:id', authenticateToken, (req, res) => {
       deadline:       deadline       !== undefined ? deadline       : goal.deadline,
       color:          color          ?? goal.color,
       icon:           icon           ?? goal.icon,
+      priority:       priority       ?? goal.priority,
+      status:         status         ?? goal.status,
       updated_at:     new Date().toISOString(),
     };
     db.get('goals').find({ id, user_id: req.user.id }).assign(updated).write();

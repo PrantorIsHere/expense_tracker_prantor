@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { getGoals, saveGoals, getTransactions, formatCurrency } from '@/lib/storage';
+import { getTransactions, formatCurrency } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
 import { Goal, Transaction } from '@/types';
 import {
   Plus,
@@ -54,13 +55,32 @@ export default function GoalsManager({ onDataChange }: GoalsManagerProps) {
   }, []);
 
   const loadData = async () => {
-    const [gls, txns] = await Promise.all([
-      getGoals(),
-      getTransactions(),
-    ]);
-    setGoals(gls as Goal[]);
-    setTransactions(txns as Transaction[]);
+    try {
+      const [rawGoals, txns] = await Promise.all([
+        apiClient.getGoals(),
+        getTransactions(),
+      ]);
+      const gls = (rawGoals as Record<string, unknown>[]).map(mapServerGoal);
+      setGoals(gls as Goal[]);
+      setTransactions(txns as Transaction[]);
+    } catch (e) {
+      console.error('GoalsManager loadData error', e);
+    }
   };
+
+  /** Map server snake_case goal to frontend camelCase Goal */
+  const mapServerGoal = (g: Record<string, unknown>): Goal => ({
+    id:            String(g.id ?? ''),
+    title:         String(g.name ?? ''),
+    description:   g.description ? String(g.description) : undefined,
+    targetAmount:  Number(g.target_amount ?? 0),
+    currentAmount: Number(g.current_amount ?? 0),
+    deadline:      String(g.deadline ?? ''),
+    priority:      (g.priority as Goal['priority']) || 'medium',
+    status:        (g.status as Goal['status']) || 'active',
+    createdAt:     String(g.created_at ?? ''),
+    updatedAt:     String(g.updated_at ?? ''),
+  });
 
   // Calculate financial insights from transactions
   const financialInsights = useMemo(() => {
@@ -141,7 +161,7 @@ export default function GoalsManager({ onDataChange }: GoalsManagerProps) {
     setEditingGoal(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.title || !formData.targetAmount || !formData.deadline) {
@@ -149,33 +169,34 @@ export default function GoalsManager({ onDataChange }: GoalsManagerProps) {
       return;
     }
 
-    const goalData: Goal = {
-      id: editingGoal?.id || `goal-${Date.now()}`,
-      title: formData.title,
-      description: formData.description,
-      targetAmount: parseFloat(formData.targetAmount),
-      currentAmount: parseFloat(formData.currentAmount || '0'),
-      deadline: new Date(formData.deadline).toISOString(),
-      priority: formData.priority,
-      status: 'active',
-      createdAt: editingGoal?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      const currentAmt = parseFloat(formData.currentAmount || '0');
+      const targetAmt  = parseFloat(formData.targetAmount);
+      const autoStatus = currentAmt >= targetAmt ? 'completed' : formData.priority === 'high' ? 'active' : 'active';
 
-    // Auto-complete if current >= target
-    if (goalData.currentAmount >= goalData.targetAmount) {
-      goalData.status = 'completed';
+      const payload = {
+        name:           formData.title,
+        description:    formData.description || null,
+        target_amount:  targetAmt,
+        current_amount: currentAmt,
+        deadline:       new Date(formData.deadline).toISOString(),
+        priority:       formData.priority,
+        status:         currentAmt >= targetAmt ? 'completed' as const : autoStatus as 'active',
+      };
+
+      if (editingGoal) {
+        await apiClient.updateGoal(editingGoal.id, payload);
+      } else {
+        await apiClient.createGoal(payload);
+      }
+
+      await loadData();
+      onDataChange();
+      setIsDialogOpen(false);
+      resetForm();
+    } catch (err) {
+      alert(`Failed to save goal: ${(err as Error).message}`);
     }
-
-    const updatedGoals = editingGoal
-      ? goals.map(g => (g.id === editingGoal.id ? goalData : g))
-      : [goalData, ...goals];
-
-    setGoals(updatedGoals);
-    saveGoals(updatedGoals);
-    onDataChange();
-    setIsDialogOpen(false);
-    resetForm();
   };
 
   const handleEdit = (goal: Goal) => {
@@ -191,50 +212,54 @@ export default function GoalsManager({ onDataChange }: GoalsManagerProps) {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this goal?')) {
-      const updatedGoals = goals.filter(g => g.id !== id);
-      setGoals(updatedGoals);
-      saveGoals(updatedGoals);
-      onDataChange();
+      try {
+        await apiClient.deleteGoal(id);
+        await loadData();
+        onDataChange();
+      } catch (err) {
+        alert(`Failed to delete goal: ${(err as Error).message}`);
+      }
     }
   };
 
-  const handleToggleStatus = (goal: Goal) => {
+  const handleToggleStatus = async (goal: Goal) => {
     const newStatus = goal.status === 'active' ? 'paused' : 'active';
-    const updatedGoals = goals.map(g =>
-      g.id === goal.id ? { ...g, status: newStatus as Goal['status'], updatedAt: new Date().toISOString() } : g
-    );
-    setGoals(updatedGoals);
-    saveGoals(updatedGoals);
-    onDataChange();
+    try {
+      await apiClient.updateGoal(goal.id, { status: newStatus });
+      await loadData();
+      onDataChange();
+    } catch (err) {
+      alert(`Failed to update goal: ${(err as Error).message}`);
+    }
   };
 
-  const handleAddFunds = (goalId: string) => {
+  const handleAddFunds = async (goalId: string) => {
     if (!addFundsAmount || parseFloat(addFundsAmount) <= 0) {
       alert('Please enter a valid amount');
       return;
     }
 
     const amount = parseFloat(addFundsAmount);
-    const updatedGoals = goals.map(g => {
-      if (g.id === goalId) {
-        const newCurrent = g.currentAmount + amount;
-        return {
-          ...g,
-          currentAmount: newCurrent,
-          status: newCurrent >= g.targetAmount ? 'completed' as Goal['status'] : g.status,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return g;
-    });
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
 
-    setGoals(updatedGoals);
-    saveGoals(updatedGoals);
-    onDataChange();
-    setAddFundsGoalId(null);
-    setAddFundsAmount('');
+    const newCurrent = goal.currentAmount + amount;
+    const newStatus  = newCurrent >= goal.targetAmount ? 'completed' as const : goal.status;
+
+    try {
+      await apiClient.updateGoal(goalId, {
+        current_amount: newCurrent,
+        status:         newStatus,
+      });
+      await loadData();
+      onDataChange();
+      setAddFundsGoalId(null);
+      setAddFundsAmount('');
+    } catch (err) {
+      alert(`Failed to add funds: ${(err as Error).message}`);
+    }
   };
 
   const activeGoals = goals.filter(g => g.status === 'active');

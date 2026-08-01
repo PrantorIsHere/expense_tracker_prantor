@@ -13,7 +13,8 @@ import SettingsPage from '@/components/SettingsPage';
 import UsersTab from '@/components/UsersTab';
 import UserHeader from '@/components/UserHeader';
 import AdditionalInfoTab from '@/components/AdditionalInfoTab';
-import { getTransactions, getUsers, getCategories, getLoans, getGoals, formatCurrency } from '@/lib/storage';
+import { getUsers, getCategories, getLoans, formatCurrency } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
 import { getCurrentSession, isAdmin } from '@/lib/auth';
 import { Transaction, User, Category, Loan, Goal } from '@/components/types';
 import {
@@ -50,17 +51,61 @@ export default function Index() {
   }, []);
 
   const loadData = async () => {
-    const [txns, usrs, cats, lns, gls] = await Promise.all([
-      getTransactions(),
+    const [txnsRaw, usrs, cats, lnsRaw, glsRaw] = await Promise.all([
+      apiClient.getTransactions(),
       getUsers(),
       getCategories(),
-      getLoans(),
-      getGoals(),
+      apiClient.getLoans(),
+      apiClient.getGoals(),
     ]);
+
+    // Map transactions: server snake_case → frontend camelCase (with fallback for old local storage data)
+    const txns = (txnsRaw as Record<string, unknown>[]).map(t => ({
+      id:          String(t.id ?? ''),
+      voucherId:   String(t.voucher_id ?? t.voucherId ?? ''),
+      title:       String(t.title ?? ''),
+      description: t.description ? String(t.description) : undefined,
+      amount:      Number(t.amount ?? 0),
+      type:        t.type as Transaction['type'],
+      categoryId:  String(t.category_id ?? t.categoryId ?? ''),
+      userId:      String(t.financial_user_id ?? t.userId ?? ''),
+      date:        String(t.date ?? ''),
+      createdAt:   String(t.created_at ?? t.createdAt ?? ''),
+      updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
+    }));
+
+    // Map goals: server snake_case → frontend camelCase
+    const gls = (glsRaw as Record<string, unknown>[]).map(g => ({
+      id:            String(g.id ?? ''),
+      title:         String(g.name ?? g.title ?? ''),
+      description:   g.description ? String(g.description) : undefined,
+      targetAmount:  Number(g.target_amount ?? g.targetAmount ?? 0),
+      currentAmount: Number(g.current_amount ?? g.currentAmount ?? 0),
+      deadline:      String(g.deadline ?? ''),
+      priority:      (g.priority as Goal['priority']) || 'medium',
+      status:        (g.status as Goal['status']) || 'active',
+      createdAt:     String(g.created_at ?? g.createdAt ?? ''),
+      updatedAt:     String(g.updated_at ?? g.updatedAt ?? ''),
+    }));
+
+    // Map loans: server snake_case → frontend camelCase
+    const lns = (lnsRaw as Record<string, unknown>[]).map(l => ({
+      id:            String(l.id ?? ''),
+      transactionId: '',
+      userId:        String(l.user_id ?? l.userId ?? ''),
+      amount:        Number(l.amount ?? 0),
+      type:          l.type as Loan['type'],
+      status:        l.status === 'paid' ? 'pending' : (l.status as Loan['status']) || 'pending',
+      // For dashboard pending loan calc: treat 'pending' as pending, 'paid'/'partial' as repaid
+      _serverStatus: String(l.status ?? 'pending'),
+      dueDate:       l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
+      createdAt:     String(l.created_at ?? l.createdAt ?? ''),
+    }));
+
     setTransactions(txns as Transaction[]);
     setUsers(usrs as User[]);
     setCategories(cats as Category[]);
-    setLoans(lns as Loan[]);
+    setLoans(lns as unknown as Loan[]);
     setGoals(gls as Goal[]);
   };
 
@@ -93,7 +138,11 @@ export default function Index() {
   const expenseRatio = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0;
 
   // Calculate loan statistics - ONLY PENDING LOANS (matching Loans page)
-  const pendingLoans = loans.filter(l => l.status === 'pending');
+  // Server status: 'pending' | 'paid' | 'partial'; map them for display
+  const pendingLoans = loans.filter(l => {
+    const raw = (l as unknown as { _serverStatus?: string })._serverStatus;
+    return raw ? raw === 'pending' : l.status === 'pending';
+  });
   
   const outstandingGiven = pendingLoans
     .filter(l => l.type === 'given')

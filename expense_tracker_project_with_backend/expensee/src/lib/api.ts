@@ -31,6 +31,14 @@ type GoalPayload = {
   deadline?: string | null;
   color?: string;
   icon?: string;
+  priority?: 'low' | 'medium' | 'high';
+  status?: 'active' | 'completed' | 'paused';
+};
+
+type CategoryPayload = {
+  name: string;
+  color?: string;
+  icon?: string;
 };
 
 type FinancialUserPayload = {
@@ -147,6 +155,15 @@ class ApiClient {
   // ── Categories ────────────────────────────────────────────────────────────
 
   async getCategories() { return this.request('/categories'); }
+  async createCategory(cat: CategoryPayload) {
+    return this.request('/categories', { method: 'POST', body: JSON.stringify(cat) });
+  }
+  async updateCategory(id: string, cat: Partial<CategoryPayload>) {
+    return this.request(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(cat) });
+  }
+  async deleteCategory(id: string) {
+    return this.request(`/categories/${id}`, { method: 'DELETE' });
+  }
 
   // ── Loans ─────────────────────────────────────────────────────────────────
 

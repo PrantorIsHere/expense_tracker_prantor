@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { getTransactions, getCategories, getUsers, getLoans, getGoals, formatCurrency } from '@/lib/storage';
+import { getCategories, getUsers, formatCurrency } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
 import { Transaction, Category, User, Loan, Goal } from '@/components/types';
 import {
   BarChart,
@@ -32,13 +33,55 @@ export default function ReportsPage() {
 
   useEffect(() => {
     (async () => {
-      const [txns, cats, usrs, lns, gls] = await Promise.all([
-        getTransactions(),
+      const [txnsRaw, cats, usrs, lnsRaw, glsRaw] = await Promise.all([
+        apiClient.getTransactions(),
         getCategories(),
         getUsers(),
-        getLoans(),
-        getGoals()
+        apiClient.getLoans(),
+        apiClient.getGoals(),
       ]);
+
+      // Map transactions server → frontend (with fallback for old local storage data)
+      const txns = (txnsRaw as Record<string, unknown>[]).map(t => ({
+        id:          String(t.id ?? ''),
+        voucherId:   String(t.voucher_id ?? t.voucherId ?? ''),
+        title:       String(t.title ?? ''),
+        description: t.description ? String(t.description) : undefined,
+        amount:      Number(t.amount ?? 0),
+        type:        t.type as Transaction['type'],
+        categoryId:  String(t.category_id ?? t.categoryId ?? ''),
+        userId:      String(t.financial_user_id ?? t.userId ?? ''),
+        date:        String(t.date ?? ''),
+        createdAt:   String(t.created_at ?? t.createdAt ?? ''),
+        updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
+      }));
+
+      // Map loans server → frontend
+      const lns = (lnsRaw as Record<string, unknown>[]).map(l => ({
+        id:            String(l.id ?? ''),
+        transactionId: '',
+        userId:        String(l.user_id ?? l.userId ?? ''),
+        amount:        Number(l.amount ?? 0),
+        type:          l.type as Loan['type'],
+        status:        l.status === 'paid' ? 'repaid' : (l.status as Loan['status']) || 'pending',
+        dueDate:       l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
+        createdAt:     String(l.created_at ?? l.createdAt ?? ''),
+      }));
+
+      // Map goals server → frontend
+      const gls = (glsRaw as Record<string, unknown>[]).map(g => ({
+        id:            String(g.id ?? ''),
+        title:         String(g.name ?? g.title ?? ''),
+        description:   g.description ? String(g.description) : undefined,
+        targetAmount:  Number(g.target_amount ?? g.targetAmount ?? 0),
+        currentAmount: Number(g.current_amount ?? g.currentAmount ?? 0),
+        deadline:      String(g.deadline ?? ''),
+        priority:      (g.priority as Goal['priority']) || 'medium',
+        status:        (g.status as Goal['status']) || 'active',
+        createdAt:     String(g.created_at ?? g.createdAt ?? ''),
+        updatedAt:     String(g.updated_at ?? g.updatedAt ?? ''),
+      }));
+
       setTransactions(txns as Transaction[]);
       setCategories(cats as Category[]);
       setUsers(usrs as User[]);

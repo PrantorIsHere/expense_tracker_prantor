@@ -11,7 +11,6 @@ import {
   getSettings, 
   saveSettings, 
   getCategories, 
-  saveCategories,
   getTransactions,
   getUsers,
   getLoans,
@@ -20,6 +19,7 @@ import {
   importData,
   resetAllData
 } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
 import { getTransactionHistory, getRentHistory } from '@/lib/additionalInfoStorage';
 import { SUPPORTED_CURRENCIES } from '@/lib/currencyUtils';
 import UsersTab from './UsersTab';
@@ -129,26 +129,16 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
       return;
     }
 
-    const existingCategories = await getCategories();
-    if (existingCategories.some(cat => cat.name.toLowerCase() === newCategoryName.toLowerCase())) {
-      setError('Category already exists');
-      return;
+    try {
+      await apiClient.createCategory({ name: newCategoryName.trim() });
+      setNewCategoryName('');
+      setError('');
+      await loadCategories();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to add category');
     }
-
-    const newCategory: Category = {
-      id: `cat-${Date.now()}`,
-      name: newCategoryName.trim(),
-      color: `#${Math.floor(Math.random()*16777215).toString(16)}`,
-      createdAt: new Date().toISOString()
-    };
-
-    const updatedCategories = [...existingCategories, newCategory];
-    await saveCategories(updatedCategories);
-    setNewCategoryName('');
-    setError('');
-    await loadCategories();
-    await loadDataSummary();
-    onDataChange();
   };
 
   const handleEditCategory = (categoryId: string) => {
@@ -159,33 +149,35 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     }
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     if (!editCategoryName.trim()) {
       setError('Category name is required');
       return;
     }
 
-    const updatedCategories = categories.map(cat =>
-      cat.id === editingCategory
-        ? { ...cat, name: editCategoryName.trim() }
-        : cat
-    );
-
-    saveCategories(updatedCategories);
-    setEditingCategory(null);
-    setEditCategoryName('');
-    setError('');
-    loadCategories();
-    loadDataSummary();
-    onDataChange();
+    try {
+      await apiClient.updateCategory(editingCategory!, { name: editCategoryName.trim() });
+      setEditingCategory(null);
+      setEditCategoryName('');
+      setError('');
+      await loadCategories();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to update category');
+    }
   };
 
-  const handleDeleteCategory = (categoryId: string) => {
-    const updatedCategories = categories.filter(cat => cat.id !== categoryId);
-    saveCategories(updatedCategories);
-    loadCategories();
-    loadDataSummary();
-    onDataChange();
+  const handleDeleteCategory = async (categoryId: string) => {
+    if (!confirm('Are you sure you want to delete this category?')) return;
+    try {
+      await apiClient.deleteCategory(categoryId);
+      await loadCategories();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to delete category');
+    }
   };
 
   const handleExportData = () => {

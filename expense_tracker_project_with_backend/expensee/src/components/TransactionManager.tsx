@@ -8,14 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  getTransactions, 
-  saveTransactions, 
-  getUsers, 
-  getCategories, 
-  generateVoucherId, 
-  formatCurrency 
-} from '@/lib/storage';
+import { getUsers, getCategories, generateVoucherId, formatCurrency } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
 import { downloadVoucher } from '@/lib/voucherGenerator';
 import { downloadMonthlyStatement } from '@/lib/monthlyStatementPDF';
 import {
@@ -39,6 +33,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   const [categories, setCategories] = useState<Category[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [previewVoucherId, setPreviewVoucherId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -69,15 +64,36 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   }, []);
 
   const loadData = async () => {
-    const [txns, usrs, cats] = await Promise.all([
-      getTransactions(),
-      getUsers(),
-      getCategories(),
-    ]);
-    setTransactions(txns as Transaction[]);
-    setUsers(usrs as User[]);
-    setCategories(cats as Category[]);
+    try {
+      const [txnsRaw, usrs, cats] = await Promise.all([
+        apiClient.getTransactions(),
+        getUsers(),
+        getCategories(),
+      ]);
+      // Map server snake_case → frontend camelCase
+      const txns = (txnsRaw as Record<string, unknown>[]).map(mapServerTransaction);
+      setTransactions(txns as Transaction[]);
+      setUsers(usrs as User[]);
+      setCategories(cats as Category[]);
+    } catch (e) {
+      console.error('loadData error', e);
+    }
   };
+
+  /** Map server snake_case transaction to frontend camelCase Transaction */
+  const mapServerTransaction = (t: Record<string, unknown>): Transaction => ({
+    id:          String(t.id ?? ''),
+    voucherId:   String(t.voucher_id ?? t.voucherId ?? ''),
+    title:       String(t.title ?? ''),
+    description: t.description ? String(t.description) : undefined,
+    amount:      Number(t.amount ?? 0),
+    type:        t.type as Transaction['type'],
+    categoryId:  String(t.category_id ?? t.categoryId ?? ''),
+    userId:      String(t.financial_user_id ?? t.userId ?? ''),
+    date:        String(t.date ?? ''),
+    createdAt:   String(t.created_at ?? t.createdAt ?? ''),
+    updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
+  });
 
   const resetForm = () => {
     setFormData({
@@ -90,6 +106,8 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       date: getDhakaDateInputValue()
     });
     setEditingTransaction(null);
+    setPreviewVoucherId('');
+    // Do NOT pre-fetch here — that would burn a counter slot if user cancels
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,35 +118,39 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       return;
     }
 
-    const vId = editingTransaction?.voucherId || await generateVoucherId();
-    const transactionData = {
-      id: editingTransaction?.id || `transaction-${Date.now()}`,
-      voucherId: vId,
-      title: formData.title,
-      description: formData.description,
-      amount: parseFloat(formData.amount),
-      type: formData.type,
-      categoryId: formData.categoryId,
-      userId: formData.userId,
-      date: createDhakaTimestamp(formData.date),
-      createdAt: editingTransaction?.createdAt || createDhakaTimestamp(),
-      updatedAt: createDhakaTimestamp()
-    };
+    try {
+      const txDate = createDhakaTimestamp(formData.date);
+      const payload = {
+        title:             formData.title,
+        description:       formData.description || undefined,
+        amount:            parseFloat(formData.amount),
+        type:              formData.type,
+        category_id:       formData.categoryId || null,
+        financial_user_id: formData.userId || null,
+        date:              txDate,
+      };
 
-    const updatedTransactions = editingTransaction
-      ? transactions.map(t => t.id === editingTransaction.id ? transactionData : t)
-      : [transactionData, ...transactions];
+      if (editingTransaction) {
+        await apiClient.updateTransaction(editingTransaction.id, payload);
+      } else {
+        // Generate exactly once on save — no wasted counter slots
+        const vId = await generateVoucherId();
+        setPreviewVoucherId(vId);  // show it briefly before dialog closes
+        await apiClient.createTransaction({ ...payload, voucher_id: vId });
+      }
 
-    setTransactions(updatedTransactions);
-    await saveTransactions(updatedTransactions);
-    onDataChange();
-    
-    setIsDialogOpen(false);
-    resetForm();
+      await loadData();
+      onDataChange();
+      setIsDialogOpen(false);
+      resetForm();
+    } catch (err) {
+      alert(`Failed to save transaction: ${(err as Error).message}`);
+    }
   };
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransaction(transaction);
+    setPreviewVoucherId(transaction.voucherId);
     setFormData({
       title: transaction.title,
       description: transaction.description || '',
@@ -143,10 +165,13 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this transaction?')) {
-      const updatedTransactions = transactions.filter(t => t.id !== id);
-      setTransactions(updatedTransactions);
-      await saveTransactions(updatedTransactions);
-      onDataChange();
+      try {
+        await apiClient.deleteTransaction(id);
+        await loadData();
+        onDataChange();
+      } catch (err) {
+        alert(`Failed to delete transaction: ${(err as Error).message}`);
+      }
     }
   };
 
@@ -271,6 +296,22 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Voucher ID — shown as preview (edit) or placeholder (new) */}
+              <div>
+                <Label htmlFor="voucherId">Voucher ID</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="voucherId"
+                    value={editingTransaction ? editingTransaction.voucherId : previewVoucherId}
+                    readOnly
+                    placeholder="Auto-assigned on save"
+                    className="font-mono text-sm bg-muted cursor-default select-all"
+                  />
+                  {!editingTransaction && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Auto-assigned on save</span>
+                  )}
+                </div>
+              </div>
               <div>
                 <Label htmlFor="title">Title *</Label>
                 <Input
