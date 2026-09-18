@@ -12466,70 +12466,44 @@
       "date": "2026-09-18T22:38:27+06:00",
       "created_at": "2026-09-18T16:38:27.493Z",
       "updated_at": "2026-09-18T16:38:27.493Z"
+    },
+    {
+      "id": "ca49c4d0-b1d5-4fb0-941d-df50cd4f2860",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "voucher_id": "2026-09-18-0004",
+      "title": "Loan Repayment from Contact",
+      "description": "Loan repayment received from Niloy",
+      "amount": 500,
+      "type": "income",
+      "category_id": "11d5dbe5-aabe-4175-a869-e7b78e45f993",
+      "financial_user_id": "user-1767945649361",
+      "account_id": "7abfee86-d05c-4dc7-9701-b1f937f5dfb0",
+      "date": "2026-09-18T00:00:00.000Z",
+      "created_at": "2026-09-18T17:02:39.845Z",
+      "updated_at": "2026-09-18T17:02:39.845Z"
+    },
+    {
+      "id": "d63b483e-b5a4-46e9-9848-944be6ff29c0",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "voucher_id": "2026-09-18-0005",
+      "title": "Loan Repayment from Contact",
+      "description": "Loan repayment received from Niloy",
+      "amount": 500,
+      "type": "income",
+      "category_id": "11d5dbe5-aabe-4175-a869-e7b78e45f993",
+      "financial_user_id": "user-1767945649361",
+      "account_id": "7abfee86-d05c-4dc7-9701-b1f937f5dfb0",
+      "date": "2026-09-18T23:04:03+06:00",
+      "created_at": "2026-09-18T17:02:45.140Z",
+      "updated_at": "2026-09-18T17:04:03.313Z"
     }
   ],
   "categories": [
-    {
-      "id": "cat-1",
-      "name": "Food & Dining",
-      "color": "#FF6B6B",
-      "icon": "🍔",
-      "user_id": null
-    },
-    {
-      "id": "cat-2",
-      "name": "Transport",
-      "color": "#4ECDC4",
-      "icon": "🚗",
-      "user_id": null
-    },
-    {
-      "id": "cat-3",
-      "name": "Shopping",
-      "color": "#45B7D1",
-      "icon": "🛍️",
-      "user_id": null
-    },
-    {
-      "id": "cat-4",
-      "name": "Entertainment",
-      "color": "#96CEB4",
-      "icon": "🎬",
-      "user_id": null
-    },
-    {
-      "id": "cat-5",
-      "name": "Health & Medical",
-      "color": "#FFEAA7",
-      "icon": "💊",
-      "user_id": null
-    },
-    {
-      "id": "cat-6",
-      "name": "Bills & Utilities",
-      "color": "#DDA0DD",
-      "icon": "💡",
-      "user_id": null
-    },
     {
       "id": "cat-7",
       "name": "Salary",
       "color": "#90EE90",
       "icon": "💰",
-      "user_id": null
-    },
-    {
-      "id": "cat-8",
-      "name": "Business",
-      "color": "#FFB347",
-      "icon": "💼",
-      "user_id": null
-    },
-    {
-      "id": "cat-9",
-      "name": "Education",
-      "color": "#87CEEB",
-      "icon": "📚",
       "user_id": null
     },
     {
@@ -12730,6 +12704,15 @@
       "createdAt": "2026-05-14T12:47:46.545Z",
       "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
       "created_at": "2026-07-18T16:00:09.378Z"
+    },
+    {
+      "id": "11d5dbe5-aabe-4175-a869-e7b78e45f993",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "name": "Loan Repayment",
+      "color": "#3B82F6",
+      "icon": "hand-coins",
+      "created_at": "2026-09-18T17:02:39.845Z",
+      "updated_at": "2026-09-18T17:02:39.845Z"
     }
   ],
   "settings": [
@@ -12832,17 +12815,6 @@
       "updated_at": "2026-07-18T15:05:03.976Z"
     },
     {
-      "id": "loan-1782916791039",
-      "transactionId": "loan-1782916791039",
-      "userId": "user-1767945649361",
-      "amount": 300,
-      "type": "given",
-      "status": "pending",
-      "createdAt": "2026-07-01T14:39:51.039Z",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "created_at": "2026-07-18T16:00:09.378Z"
-    },
-    {
       "id": "loan-1781805306856",
       "transactionId": "loan-1781805306856",
       "userId": "user-1781805290687",
@@ -12873,21 +12845,14 @@
       "userId": "user-1767945649361",
       "amount": 500,
       "type": "given",
-      "status": "pending",
+      "status": "paid",
       "createdAt": "2026-05-17T15:37:47.246Z",
       "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "created_at": "2026-07-18T16:00:09.378Z"
-    },
-    {
-      "id": "loan-1777469776476",
-      "transactionId": "loan-1777469776476",
-      "userId": "user-1767945649361",
-      "amount": 400,
-      "type": "given",
-      "status": "pending",
-      "createdAt": "2026-04-29T13:36:16.476Z",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "created_at": "2026-07-18T16:00:09.378Z"
+      "created_at": "2026-07-18T16:00:09.378Z",
+      "repaid_amount": 500,
+      "repaid_date": "2026-09-18T00:00:00.000Z",
+      "repaid_account_id": "7abfee86-d05c-4dc7-9701-b1f937f5dfb0",
+      "updated_at": "2026-09-18T17:02:39.845Z"
     },
     {
       "id": "loan-1775740214842",
@@ -12941,10 +12906,14 @@
       "userId": "user-1767945649361",
       "amount": 500,
       "type": "given",
-      "status": "pending",
+      "status": "paid",
       "createdAt": "2026-02-04T13:36:01.382Z",
       "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "created_at": "2026-07-18T16:00:09.378Z"
+      "created_at": "2026-07-18T16:00:09.378Z",
+      "repaid_amount": 500,
+      "repaid_date": "2026-09-18T00:00:00.000Z",
+      "repaid_account_id": "7a0f32a3-4ead-409f-abd9-610696f3dee3",
+      "updated_at": "2026-09-18T17:02:45.140Z"
     },
     {
       "id": "loan-1767972020944",
@@ -13409,7 +13378,7 @@
     {
       "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
       "date_key": "2026-09-18",
-      "counter": 3
+      "counter": 5
     }
   ],
   "accounts": [

@@ -3,14 +3,30 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiClient } from '@/lib/api';
-import { getUsers, formatCurrency } from '@/lib/storage';
-import { User } from '@/components/types';
-import { Plus, CheckCircle, Clock, TrendingUp, TrendingDown, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getUsers, getAccounts, formatCurrency } from '@/lib/storage';
+import { getDhakaDateInputValue } from '@/lib/dhakaTime';
+import { User, Account } from '@/components/types';
+import { 
+  Plus, 
+  CheckCircle, 
+  Clock, 
+  TrendingUp, 
+  TrendingDown, 
+  Search, 
+  Filter, 
+  ChevronLeft, 
+  ChevronRight,
+  Wallet,
+  ArrowDownRight,
+  ArrowUpRight,
+  DollarSign,
+  Trash2
+} from 'lucide-react';
 
 interface LoansManagerProps {
   onDataChange: () => void;
@@ -27,6 +43,11 @@ interface ServerLoan {
   date: string;
   due_date: string | null;
   status: 'pending' | 'paid' | 'partial';
+  account_id?: string | null;
+  repaid_amount?: number;
+  repaid_date?: string | null;
+  repaid_account_id?: string | null;
+  userId?: string; // for old loans
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +55,7 @@ interface ServerLoan {
 export default function LoansManager({ onDataChange }: LoansManagerProps) {
   const [loans, setLoans] = useState<ServerLoan[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -41,14 +63,28 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // Add Loan Form State
   const [formData, setFormData] = useState({
     userId: '',
     amount: '',
     type: 'given' as 'given' | 'taken',
+    accountId: '',
+    recordTransaction: true,
     dueDate: '',
     title: '',
     description: ''
   });
+
+  // Repay Loan Modal State
+  const [isRepayDialogOpen, setIsRepayDialogOpen] = useState(false);
+  const [repayingLoan, setRepayingLoan] = useState<ServerLoan | null>(null);
+  const [repayFormData, setRepayFormData] = useState({
+    accountId: '',
+    amount: '',
+    date: '',
+    notes: '',
+  });
+  const [repaySubmitting, setRepaySubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -60,12 +96,14 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
 
   const loadData = async () => {
     try {
-      const [rawLoans, usrs] = await Promise.all([
+      const [rawLoans, usrs, accs] = await Promise.all([
         apiClient.getLoans(),
         getUsers(),
+        getAccounts(),
       ]);
       setLoans(rawLoans as ServerLoan[]);
       setUsers(usrs as User[]);
+      setAccounts(accs as Account[]);
     } catch (e) {
       console.error('LoansManager loadData error', e);
     }
@@ -76,6 +114,8 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       userId: '',
       amount: '',
       type: 'given',
+      accountId: '',
+      recordTransaction: true,
       dueDate: '',
       title: '',
       description: ''
@@ -99,13 +139,16 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
 
     try {
       await apiClient.createLoan({
-        person:      selectedUser.name,
-        amount:      parseFloat(formData.amount),
-        type:        formData.type,
-        description: formData.description || formData.title,
-        date:        new Date().toISOString(),
-        due_date:    formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
-        status:      'pending',
+        person:             selectedUser.name,
+        amount:             parseFloat(formData.amount),
+        type:               formData.type,
+        description:        formData.description || formData.title,
+        date:               new Date().toISOString(),
+        due_date:           formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
+        status:             'pending',
+        account_id:         formData.accountId || null,
+        record_transaction: formData.recordTransaction && !!formData.accountId,
+        financial_user_id:  selectedUser.id,
       });
 
       await loadData();
@@ -117,14 +160,66 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     }
   };
 
-  const handleRepayLoan = async (loanId: string) => {
-    if (confirm('Mark this loan as repaid?')) {
+  const openRepayDialog = (loan: ServerLoan) => {
+    const personName = loan.person || users.find(u => u.id === loan.userId)?.name || 'Contact';
+    const remainingAmount = Math.max(0, loan.amount - (loan.repaid_amount || 0));
+    const defaultAccountId = loan.account_id || (accounts.length > 0 ? accounts[0].id : '');
+    
+    setRepayingLoan(loan);
+    setRepayFormData({
+      accountId: defaultAccountId,
+      amount: remainingAmount > 0 ? remainingAmount.toString() : loan.amount.toString(),
+      date: getDhakaDateInputValue(),
+      notes: loan.type === 'given' 
+        ? `Loan repayment received from ${personName}` 
+        : `Loan repayment paid to ${personName}`,
+    });
+    setIsRepayDialogOpen(true);
+  };
+
+  const handleConfirmRepay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!repayingLoan) return;
+
+    if (!repayFormData.accountId) {
+      alert('Please select an account for the repayment payment/deposit');
+      return;
+    }
+
+    const repayAmt = parseFloat(repayFormData.amount);
+    if (isNaN(repayAmt) || repayAmt <= 0) {
+      alert('Please enter a valid repayment amount greater than 0');
+      return;
+    }
+
+    setRepaySubmitting(true);
+    try {
+      await apiClient.repayLoan(repayingLoan.id, {
+        account_id: repayFormData.accountId,
+        amount: repayAmt,
+        date: repayFormData.date ? new Date(repayFormData.date).toISOString() : new Date().toISOString(),
+        notes: repayFormData.notes,
+      });
+
+      await loadData();
+      onDataChange();
+      setIsRepayDialogOpen(false);
+      setRepayingLoan(null);
+    } catch (err) {
+      alert(`Failed to record loan repayment: ${(err as Error).message}`);
+    } finally {
+      setRepaySubmitting(false);
+    }
+  };
+
+  const handleDeleteLoan = async (loanId: string) => {
+    if (confirm('Are you sure you want to delete this loan record?')) {
       try {
-        await apiClient.updateLoan(loanId, { status: 'paid' });
+        await apiClient.deleteLoan(loanId);
         await loadData();
         onDataChange();
       } catch (err) {
-        alert(`Failed to update loan: ${(err as Error).message}`);
+        alert(`Failed to delete loan: ${(err as Error).message}`);
       }
     }
   };
@@ -308,6 +403,33 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
               </div>
 
               <div>
+                <Label htmlFor="loanAccount">Payment Method / Account</Label>
+                <Select
+                  value={formData.accountId || 'none'}
+                  onValueChange={(val) => setFormData({ ...formData, accountId: val === 'none' ? '' : val })}
+                >
+                  <SelectTrigger id="loanAccount">
+                    <SelectValue placeholder="Select account (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (Track loan without moving cash)</SelectItem>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.type.replace('_', ' ')}) — Bal: {formatCurrency(acc.balance ?? acc.currentBalance ?? 0)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formData.accountId && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formData.type === 'given' 
+                      ? '💸 Disburses funds from this account (- Cash Out / Expense)' 
+                      : '💰 Deposits funds into this account (+ Cash In / Income)'}
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <Label htmlFor="loanDueDate">Due Date (Optional)</Label>
                 <Input
                   id="loanDueDate"
@@ -476,9 +598,10 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                       <TableHead>Description</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Amount</TableHead>
+                      <TableHead>Account</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -488,7 +611,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                           {new Date(loan.date || loan.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          <p className="font-medium">{loan.person}</p>
+                          <p className="font-medium">
+                            {loan.person || users.find(u => u.id === loan.userId || u.id === loan.user_id)?.name || 'Contact'}
+                          </p>
                         </TableCell>
                         <TableCell>
                           <p className="text-sm text-muted-foreground">{loan.description || '—'}</p>
@@ -502,6 +627,20 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                           loan.type === 'given' ? 'text-green-600' : 'text-red-600'
                         }`}>
                           {formatCurrency(loan.amount)}
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const accId = loan.repaid_account_id || loan.account_id;
+                            const acc = accounts.find(a => a.id === accId);
+                            return acc ? (
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span>{acc.name}</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           {loan.due_date ? (
@@ -525,28 +664,35 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                               </>
                             ) : (
                               <>
-                                <CheckCircle className="mr-1 h-3 w-3" />
+                                <CheckCircle className="mr-1 h-3 w-3 text-green-500" />
                                 {loan.status.toUpperCase()}
                               </>
                             )}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          {loan.status === 'pending' && (
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {loan.status === 'pending' && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs font-medium"
+                                onClick={() => openRepayDialog(loan)}
+                              >
+                                <CheckCircle className="mr-1 h-3.5 w-3.5" />
+                                Mark Repaid
+                              </Button>
+                            )}
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => handleRepayLoan(loan.id)}
+                              variant="ghost"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 h-8 w-8 p-0"
+                              onClick={() => handleDeleteLoan(loan.id)}
+                              title="Delete Loan"
                             >
-                              <CheckCircle className="mr-1 h-3 w-3" />
-                              Mark Repaid
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                          )}
-                          {loan.status !== 'pending' && (
-                            <span className="text-sm text-muted-foreground">
-                              {loan.status === 'paid' ? 'Paid' : loan.status}
-                            </span>
-                          )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -613,6 +759,165 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Repay Loan Modal */}
+      <Dialog open={isRepayDialogOpen} onOpenChange={setIsRepayDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              Mark Loan as Repaid
+            </DialogTitle>
+          </DialogHeader>
+
+          {repayingLoan && (
+            <form onSubmit={handleConfirmRepay} className="space-y-4 pt-2">
+              {/* Cash flow banner */}
+              <div className={`rounded-lg p-3 border ${
+                repayingLoan.type === 'given'
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-100'
+                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100'
+              }`}>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  {repayingLoan.type === 'given' ? (
+                    <>
+                      <ArrowDownRight className="h-4 w-4 text-green-600" />
+                      <span>Cash In (+৳{repayFormData.amount || repayingLoan.amount})</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpRight className="h-4 w-4 text-amber-600" />
+                      <span>Cash Out (-৳{repayFormData.amount || repayingLoan.amount})</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-xs mt-1 opacity-90">
+                  {repayingLoan.type === 'given'
+                    ? `You are receiving money back from ${repayingLoan.person || 'Contact'}. This will deposit into your account and INCREASE your total balance.`
+                    : `You are paying back your debt to ${repayingLoan.person || 'Contact'}. This will deduct from your account and DECREASE your total balance.`}
+                </p>
+              </div>
+
+              {/* Loan details summary */}
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs text-muted-foreground border">
+                <div className="flex justify-between">
+                  <span>Contact:</span>
+                  <span className="font-semibold text-foreground">{repayingLoan.person || 'Contact'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Loan Type:</span>
+                  <span className="font-semibold text-foreground">
+                    {repayingLoan.type === 'given' ? 'Loan Given (Owed to you)' : 'Loan Taken (Borrowed)'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Original Amount:</span>
+                  <span className="font-semibold text-foreground">{formatCurrency(repayingLoan.amount)}</span>
+                </div>
+              </div>
+
+              {/* Repayment Amount */}
+              <div>
+                <Label htmlFor="repayAmount" className="text-sm font-medium">
+                  Repayment Amount (৳) *
+                </Label>
+                <div className="relative mt-1">
+                  <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="repayAmount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    className="pl-8"
+                    value={repayFormData.amount}
+                    onChange={(e) => setRepayFormData({ ...repayFormData, amount: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Account / Payment Method Selector */}
+              <div>
+                <Label htmlFor="repayAccount" className="text-sm font-medium">
+                  Deposit / Pay From Account *
+                </Label>
+                <Select
+                  value={repayFormData.accountId}
+                  onValueChange={(val) => setRepayFormData({ ...repayFormData, accountId: val })}
+                >
+                  <SelectTrigger id="repayAccount" className="mt-1">
+                    <SelectValue placeholder="Select account (Cash, Bank, Bkash...)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <span>{acc.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            ৳{Number(acc.balance ?? acc.currentBalance ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {repayingLoan.type === 'given'
+                    ? 'Money will be deposited into this account (+ Balance)'
+                    : 'Money will be deducted from this account (- Balance)'}
+                </p>
+              </div>
+
+              {/* Repayment Date */}
+              <div>
+                <Label htmlFor="repayDate" className="text-sm font-medium">
+                  Repayment Date
+                </Label>
+                <Input
+                  id="repayDate"
+                  type="date"
+                  className="mt-1"
+                  value={repayFormData.date}
+                  onChange={(e) => setRepayFormData({ ...repayFormData, date: e.target.value })}
+                  required
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <Label htmlFor="repayNotes" className="text-sm font-medium">
+                  Notes / Remarks
+                </Label>
+                <Input
+                  id="repayNotes"
+                  className="mt-1"
+                  placeholder="e.g. Bank transfer, Cash returned in full"
+                  value={repayFormData.notes}
+                  onChange={(e) => setRepayFormData({ ...repayFormData, notes: e.target.value })}
+                />
+              </div>
+
+              <DialogFooter className="pt-2 flex gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsRepayDialogOpen(false)}
+                  disabled={repaySubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={repaySubmitting || !repayFormData.accountId || !repayFormData.amount}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {repaySubmitting ? 'Recording...' : 'Confirm Repayment'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

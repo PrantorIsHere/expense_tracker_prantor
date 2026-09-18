@@ -22,6 +22,9 @@ type LoanPayload = {
   date: string;
   due_date?: string | null;
   status?: 'pending' | 'paid' | 'partial';
+  account_id?: string | null;
+  record_transaction?: boolean;
+  financial_user_id?: string | null;
 };
 
 type GoalPayload = {
@@ -196,6 +199,9 @@ class ApiClient {
   }
   async updateLoan(id: string, loan: Partial<LoanPayload>) {
     return this.request(`/loans/${id}`, { method: 'PUT', body: JSON.stringify(loan) });
+  }
+  async repayLoan(id: string, payload: { account_id: string; amount?: number; date?: string; notes?: string }) {
+    return this.request(`/loans/${id}/repay`, { method: 'POST', body: JSON.stringify(payload) });
   }
   async deleteLoan(id: string) {
     return this.request(`/loans/${id}`, { method: 'DELETE' });
