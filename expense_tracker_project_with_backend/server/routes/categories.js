@@ -58,13 +58,15 @@ router.post('/', authenticateToken, (req, res) => {
   }
 });
 
-// PUT /api/categories/:id — update a user-owned category
+// PUT /api/categories/:id — update a category
 router.put('/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const cat = db.get('categories').find({ id, user_id: userId }).value();
+    const cat = db.get('categories')
+      .find(c => c.id === id && (c.user_id === userId || c.user_id === null))
+      .value();
     if (!cat) {
       return res.status(404).json({ error: 'Category not found or not editable' });
     }
@@ -72,13 +74,17 @@ router.put('/:id', authenticateToken, (req, res) => {
     const { name, color, icon } = req.body;
     const updated = {
       ...cat,
+      user_id:    userId,
       name:       name  !== undefined ? name.trim() : cat.name,
       color:      color !== undefined ? color       : cat.color,
       icon:       icon  !== undefined ? icon        : cat.icon,
       updated_at: new Date().toISOString(),
     };
 
-    db.get('categories').find({ id, user_id: userId }).assign(updated).write();
+    db.get('categories')
+      .find(c => c.id === id && (c.user_id === userId || c.user_id === null))
+      .assign(updated)
+      .write();
     res.json(updated);
   } catch (e) {
     console.error('categories update error', e);
@@ -86,18 +92,35 @@ router.put('/:id', authenticateToken, (req, res) => {
   }
 });
 
-// DELETE /api/categories/:id — delete a user-owned category
+// DELETE /api/categories/:id — delete a category
 router.delete('/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const cat = db.get('categories').find({ id, user_id: userId }).value();
+    const cat = db.get('categories')
+      .find(c => c.id === id && (c.user_id === userId || c.user_id === null))
+      .value();
     if (!cat) {
       return res.status(404).json({ error: 'Category not found or not deletable' });
     }
 
-    db.get('categories').remove({ id, user_id: userId }).write();
+    db.get('categories')
+      .remove(c => c.id === id && (c.user_id === userId || c.user_id === null))
+      .write();
+
+    // Preserve all existing transaction data: never delete transactions!
+    // Simply unlink category reference to null on transactions belonging to this user
+    db.get('transactions')
+      .filter(t => t.user_id === userId && (t.category_id === id || t.categoryId === id))
+      .each(t => {
+        t.category_id = null;
+        if (t.categoryId !== undefined) {
+          t.categoryId = null;
+        }
+      })
+      .write();
+
     res.json({ message: 'Deleted' });
   } catch (e) {
     console.error('categories delete error', e);

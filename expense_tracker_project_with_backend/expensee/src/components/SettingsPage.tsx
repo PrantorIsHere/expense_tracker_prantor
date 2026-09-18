@@ -11,19 +11,21 @@ import {
   getSettings, 
   saveSettings, 
   getCategories, 
+  getAccounts,
   getTransactions,
   getUsers,
   getLoans,
   getGoals,
   exportAllData,
   importData,
-  resetAllData
+  resetAllData,
+  formatCurrency
 } from '@/lib/storage';
 import { apiClient } from '@/lib/api';
 import { getTransactionHistory, getRentHistory } from '@/lib/additionalInfoStorage';
 import { SUPPORTED_CURRENCIES } from '@/lib/currencyUtils';
 import UsersTab from './UsersTab';
-import { Category } from '@/components/types';
+import { Category, Account } from '@/components/types';
 import { 
   Settings, 
   Users, 
@@ -33,7 +35,13 @@ import {
   Trash2, 
   Plus,
   Edit2,
-  Save
+  Save,
+  Landmark,
+  Wallet,
+  Smartphone,
+  CreditCard,
+  PiggyBank,
+  Check
 } from 'lucide-react';
 
 interface SettingsPageProps {
@@ -62,12 +70,33 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [editCategoryName, setEditCategoryName] = useState('');
+  const [categoryUsage, setCategoryUsage] = useState<Record<string, number>>({});
+
+  // Accounts state
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [newAccountData, setNewAccountData] = useState({
+    name: '',
+    type: 'bank' as Account['type'],
+    accountNumber: '',
+    initialBalance: '',
+    color: '#4ECDC4',
+  });
+  const [editingAccount, setEditingAccount] = useState<string | null>(null);
+  const [editAccountData, setEditAccountData] = useState({
+    name: '',
+    type: 'bank' as Account['type'],
+    accountNumber: '',
+    initialBalance: '',
+    color: '#4ECDC4',
+  });
+
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [dataSummary, setDataSummary] = useState({
     transactions: 0,
     users: 0,
     categories: 0,
+    accounts: 0,
     loans: 0,
     goals: 0,
     transactionHistory: 0,
@@ -78,6 +107,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     (async () => {
       await loadSettings();
       await loadCategories();
+      await loadAccounts();
       await loadDataSummary();
     })();
   }, []);
@@ -95,20 +125,36 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     setCategories(loadedCategories);
   };
 
+  const loadAccounts = async () => {
+    const loadedAccounts = await getAccounts();
+    setAccounts(loadedAccounts);
+  };
+
   const loadDataSummary = async () => {
-    const [txns, usrs, cats, lns, gls, txHistory, rentHist] = await Promise.all([
+    const [txns, usrs, cats, accs, lns, gls, txHistory, rentHist] = await Promise.all([
       getTransactions(),
       getUsers(),
       getCategories(),
+      getAccounts(),
       getLoans(),
       getGoals(),
       getTransactionHistory(),
       getRentHistory(),
     ]);
+
+    // Count usage of categories in existing transactions
+    const usage: Record<string, number> = {};
+    txns.forEach((t) => {
+      const cid = t.categoryId || (t as unknown as { category_id?: string }).category_id;
+      if (cid) usage[cid] = (usage[cid] || 0) + 1;
+    });
+    setCategoryUsage(usage);
+
     setDataSummary({
       transactions: txns.length,
       users: usrs.length,
       categories: cats.length,
+      accounts: accs.length,
       loans: lns.length,
       goals: gls.length,
       transactionHistory: txHistory.length,
@@ -133,6 +179,8 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
       await apiClient.createCategory({ name: newCategoryName.trim() });
       setNewCategoryName('');
       setError('');
+      setMessage('Category added successfully!');
+      setTimeout(() => setMessage(''), 3000);
       await loadCategories();
       await loadDataSummary();
       onDataChange();
@@ -160,6 +208,8 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
       setEditingCategory(null);
       setEditCategoryName('');
       setError('');
+      setMessage('Category updated successfully!');
+      setTimeout(() => setMessage(''), 3000);
       await loadCategories();
       await loadDataSummary();
       onDataChange();
@@ -169,14 +219,111 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    if (!confirm('Are you sure you want to delete this category?')) return;
+    const category = categories.find((cat) => cat.id === categoryId);
+    const count = categoryUsage[categoryId] || 0;
+    const confirmMsg = count > 0
+      ? `Are you sure you want to delete "${category?.name || 'this category'}"? It is currently used in ${count} transaction(s). Your transactions will not be lost and will remain safely preserved as Uncategorized.`
+      : `Are you sure you want to delete "${category?.name || 'this category'}"?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
     try {
       await apiClient.deleteCategory(categoryId);
+      setError('');
+      setMessage('Category deleted successfully!');
+      setTimeout(() => setMessage(''), 3000);
       await loadCategories();
       await loadDataSummary();
       onDataChange();
     } catch (err) {
       setError((err as Error).message || 'Failed to delete category');
+    }
+  };
+
+  // Account Handlers
+  const handleAddAccount = async () => {
+    if (!newAccountData.name.trim()) {
+      setError('Account name is required');
+      return;
+    }
+
+    try {
+      await apiClient.createAccount({
+        name: newAccountData.name.trim(),
+        type: newAccountData.type,
+        account_number: newAccountData.accountNumber.trim() || null,
+        initial_balance: parseFloat(newAccountData.initialBalance) || 0,
+        color: newAccountData.color,
+      });
+      setNewAccountData({
+        name: '',
+        type: 'bank',
+        accountNumber: '',
+        initialBalance: '',
+        color: '#4ECDC4',
+      });
+      setError('');
+      setMessage('Account added successfully!');
+      setTimeout(() => setMessage(''), 3000);
+      await loadAccounts();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to add account');
+    }
+  };
+
+  const handleEditAccount = (acc: Account) => {
+    setEditingAccount(acc.id);
+    setEditAccountData({
+      name: acc.name,
+      type: acc.type,
+      accountNumber: acc.accountNumber || '',
+      initialBalance: String(acc.initialBalance ?? 0),
+      color: acc.color || '#4ECDC4',
+    });
+  };
+
+  const handleSaveAccount = async () => {
+    if (!editAccountData.name.trim()) {
+      setError('Account name is required');
+      return;
+    }
+
+    try {
+      await apiClient.updateAccount(editingAccount!, {
+        name: editAccountData.name.trim(),
+        type: editAccountData.type,
+        account_number: editAccountData.accountNumber.trim() || null,
+        initial_balance: parseFloat(editAccountData.initialBalance) || 0,
+        color: editAccountData.color,
+      });
+      setEditingAccount(null);
+      setError('');
+      setMessage('Account updated successfully!');
+      setTimeout(() => setMessage(''), 3000);
+      await loadAccounts();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to update account');
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: string) => {
+    const acc = accounts.find((a) => a.id === accountId);
+    if (!window.confirm(`Are you sure you want to delete "${acc?.name || 'this account'}"? Any transactions linked to this account will remain completely safe.`)) return;
+
+    try {
+      await apiClient.deleteAccount(accountId);
+      setError('');
+      setMessage('Account deleted successfully!');
+      setTimeout(() => setMessage(''), 3000);
+      await loadAccounts();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to delete account');
     }
   };
 
@@ -228,18 +375,22 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   return (
     <div className="space-y-6">
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="general">
             <Settings className="mr-2 h-4 w-4" />
             General
           </TabsTrigger>
-          <TabsTrigger value="users">
-            <Users className="mr-2 h-4 w-4" />
-            Users
+          <TabsTrigger value="accounts">
+            <Landmark className="mr-2 h-4 w-4" />
+            Accounts
           </TabsTrigger>
           <TabsTrigger value="categories">
             <Tags className="mr-2 h-4 w-4" />
             Categories
+          </TabsTrigger>
+          <TabsTrigger value="users">
+            <Users className="mr-2 h-4 w-4" />
+            Users
           </TabsTrigger>
           <TabsTrigger value="data">
             <Download className="mr-2 h-4 w-4" />
@@ -360,6 +511,276 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
           <UsersTab onDataChange={onDataChange} />
         </TabsContent>
 
+        <TabsContent value="accounts" className="space-y-6">
+          {/* Accounts Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-emerald-700">Total Funds (All Accounts)</p>
+                  <p className="text-xl font-bold text-emerald-900 mt-1">
+                    {formatCurrency(accounts.reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                  <Wallet className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-blue-700">Bank Accounts</p>
+                  <p className="text-xl font-bold text-blue-900 mt-1">
+                    {formatCurrency(accounts.filter(a => a.type === 'bank' || a.type === 'savings').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                  <Landmark className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-amber-700">Cash in Hand</p>
+                  <p className="text-xl font-bold text-amber-900 mt-1">
+                    {formatCurrency(accounts.filter(a => a.type === 'cash').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                  <Wallet className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-purple-700">Mobile Wallets</p>
+                  <p className="text-xl font-bold text-purple-900 mt-1">
+                    {formatCurrency(accounts.filter(a => a.type === 'mobile_wallet').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Add Account Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5 text-primary" />
+                Add Bank Account / Wallet
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                <div className="md:col-span-2">
+                  <Label htmlFor="accName">Account Name *</Label>
+                  <Input
+                    id="accName"
+                    placeholder="e.g. MTB, BRAC Bank, bKash, Cash"
+                    value={newAccountData.name}
+                    onChange={(e) => setNewAccountData({ ...newAccountData, name: e.target.value })}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddAccount()}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="accType">Type</Label>
+                  <Select
+                    value={newAccountData.type}
+                    onValueChange={(val: Account['type']) => setNewAccountData({ ...newAccountData, type: val })}
+                  >
+                    <SelectTrigger id="accType">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bank">Bank Account</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="mobile_wallet">Mobile Wallet (bKash/Nagad)</SelectItem>
+                      <SelectItem value="credit_card">Credit Card</SelectItem>
+                      <SelectItem value="savings">Savings Account</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="accInitBal">Opening Balance</Label>
+                  <Input
+                    id="accInitBal"
+                    type="number"
+                    placeholder="0.00"
+                    value={newAccountData.initialBalance}
+                    onChange={(e) => setNewAccountData({ ...newAccountData, initialBalance: e.target.value })}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddAccount()}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="accNum">Account No (Opt.)</Label>
+                  <Input
+                    id="accNum"
+                    placeholder="e.g. 1023..."
+                    value={newAccountData.accountNumber}
+                    onChange={(e) => setNewAccountData({ ...newAccountData, accountNumber: e.target.value })}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddAccount()}
+                  />
+                </div>
+              </div>
+
+              <Button onClick={handleAddAccount} className="mt-4 w-full md:w-auto">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Account
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Manage Accounts List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Landmark className="h-5 w-5" />
+                Manage Accounts ({accounts.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {accounts.map((acc) => {
+                const isEditing = editingAccount === acc.id;
+
+                return (
+                  <div
+                    key={acc.id}
+                    className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-border gap-4"
+                  >
+                    {isEditing ? (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
+                        <div>
+                          <Label className="text-xs">Account Name</Label>
+                          <Input
+                            value={editAccountData.name}
+                            onChange={(e) => setEditAccountData({ ...editAccountData, name: e.target.value })}
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Type</Label>
+                          <Select
+                            value={editAccountData.type}
+                            onValueChange={(val: Account['type']) => setEditAccountData({ ...editAccountData, type: val })}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="bank">Bank Account</SelectItem>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="mobile_wallet">Mobile Wallet</SelectItem>
+                              <SelectItem value="credit_card">Credit Card</SelectItem>
+                              <SelectItem value="savings">Savings Account</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Opening Balance</Label>
+                          <Input
+                            type="number"
+                            value={editAccountData.initialBalance}
+                            onChange={(e) => setEditAccountData({ ...editAccountData, initialBalance: e.target.value })}
+                            className="h-9"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Account No.</Label>
+                          <Input
+                            value={editAccountData.accountNumber}
+                            onChange={(e) => setEditAccountData({ ...editAccountData, accountNumber: e.target.value })}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center text-xl font-medium"
+                          style={{ backgroundColor: `${acc.color || '#4ECDC4'}20`, color: acc.color || '#4ECDC4' }}
+                        >
+                          {acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-base">{acc.name}</span>
+                            <span className="text-xs px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700 capitalize font-medium">
+                              {acc.type ? acc.type.replace('_', ' ') : 'bank'}
+                            </span>
+                            {acc.accountNumber && (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                #{acc.accountNumber}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Opening balance: {formatCurrency(acc.initialBalance || 0)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between md:justify-end gap-4">
+                      {!isEditing && (
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Current Balance</p>
+                          <p className={`text-lg font-bold ${(acc.currentBalance ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {formatCurrency(acc.currentBalance ?? 0)}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        {isEditing ? (
+                          <>
+                            <Button size="sm" onClick={handleSaveAccount}>
+                              <Save className="h-4 w-4 mr-1" />
+                              Save
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingAccount(null)}>
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => handleEditAccount(acc)}>
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => handleDeleteAccount(acc.id)}>
+                              <Trash2 className="h-4 w-4 text-rose-500" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {accounts.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  <Landmark className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No accounts configured yet. Add an account above.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="categories" className="space-y-6">
           <Card>
             <CardHeader>
@@ -384,7 +805,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                   <div key={category.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-4 h-4 rounded-full"
+                        className="w-4 h-4 rounded-full flex-shrink-0"
                         style={{ backgroundColor: category.color }}
                       />
                       {editingCategory === category.id ? (
@@ -395,7 +816,18 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                           className="h-8"
                         />
                       ) : (
-                        <span>{category.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{category.name}</span>
+                          {categoryUsage[category.id] !== undefined && categoryUsage[category.id] > 0 ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+                              {categoryUsage[category.id]} {categoryUsage[category.id] === 1 ? 'transaction' : 'transactions'}
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                              0 transactions
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-2">

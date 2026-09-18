@@ -38,6 +38,8 @@ db.defaults({
   goals: [],
   // --- Financial Users (people/contacts for tagging transactions) ---
   financial_users: [],
+  // --- Accounts (Cash, Bank Accounts like MTB, BRAC Bank, Mobile Wallets) ---
+  accounts: [],
   // --- Additional Info ---
   // transaction_history: named items used as quick-pick references
   transaction_history: [],

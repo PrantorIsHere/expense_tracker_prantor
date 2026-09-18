@@ -12451,21 +12451,6 @@
       "date": "2026-09-18T21:25:58+06:00",
       "created_at": "2026-09-18T15:25:58.913Z",
       "updated_at": "2026-09-18T15:25:58.913Z"
-    },
-    {
-      "id": "b08f4344-a9bd-476e-acdb-ab7b1071ad9d",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "voucher_id": "2026-09-18-0003",
-      "title": "Money adj",
-      "description": null,
-      "amount": 60,
-      "type": "income",
-      "category_id": "cat-1760104373745",
-      "financial_user_id": "user-1759407916224",
-      "account_id": "7a0f32a3-4ead-409f-abd9-610696f3dee3",
-      "date": "2026-09-18T22:38:27+06:00",
-      "created_at": "2026-09-18T16:38:27.493Z",
-      "updated_at": "2026-09-18T16:38:27.493Z"
     }
   ],
   "categories": [
@@ -13409,57 +13394,7 @@
     {
       "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
       "date_key": "2026-09-18",
-      "counter": 3
-    }
-  ],
-  "accounts": [
-    {
-      "id": "7a0f32a3-4ead-409f-abd9-610696f3dee3",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "name": "Cash",
-      "type": "cash",
-      "account_number": null,
-      "initial_balance": 5490,
-      "color": "#10B981",
-      "icon": "💵",
-      "created_at": "2026-09-18T15:55:15.405Z",
-      "updated_at": "2026-09-18T16:38:10.674Z"
-    },
-    {
-      "id": "66796253-5e5a-4387-9a35-293c18e894b9",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "name": "MTB Bank",
-      "type": "bank",
-      "account_number": "1311001813293",
-      "initial_balance": 306,
-      "color": "#0055aa",
-      "icon": "🏦",
-      "created_at": "2026-09-18T16:26:15.797Z",
-      "updated_at": "2026-09-18T16:31:46.289Z"
-    },
-    {
-      "id": "b3fc5eb2-c4f6-4927-8634-792f4f15799c",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "name": "BRAC Bank",
-      "type": "bank",
-      "account_number": "1078463620001",
-      "initial_balance": 100000.9,
-      "color": "#0088cc",
-      "icon": "🏦",
-      "created_at": "2026-09-18T16:26:15.806Z",
-      "updated_at": "2026-09-18T16:36:15.943Z"
-    },
-    {
-      "id": "7abfee86-d05c-4dc7-9701-b1f937f5dfb0",
-      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
-      "name": "Bkash",
-      "type": "mobile_wallet",
-      "account_number": "01632224527",
-      "initial_balance": 88.37,
-      "color": "#4ECDC4",
-      "icon": "📱",
-      "created_at": "2026-09-18T16:34:41.119Z",
-      "updated_at": "2026-09-18T16:34:41.119Z"
+      "counter": 2
     }
   ]
 }

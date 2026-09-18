@@ -13,10 +13,10 @@ import SettingsPage from '@/components/SettingsPage';
 import UsersTab from '@/components/UsersTab';
 import UserHeader from '@/components/UserHeader';
 import AdditionalInfoTab from '@/components/AdditionalInfoTab';
-import { getUsers, getCategories, getLoans, formatCurrency } from '@/lib/storage';
+import { getUsers, getCategories, getAccounts, getLoans, formatCurrency } from '@/lib/storage';
 import { apiClient } from '@/lib/api';
 import { getCurrentSession, isAdmin } from '@/lib/auth';
-import { Transaction, User, Category, Loan, Goal } from '@/components/types';
+import { Transaction, User, Category, Loan, Goal, Account } from '@/components/types';
 import {
   DollarSign,
   TrendingUp,
@@ -33,6 +33,10 @@ import {
   ArrowDownRight,
   PiggyBank,
   LayoutDashboard,
+  Wallet,
+  Building2,
+  Smartphone,
+  CreditCard,
 } from 'lucide-react';
 
 export default function Index() {
@@ -40,6 +44,7 @@ export default function Index() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
 
@@ -51,10 +56,11 @@ export default function Index() {
   }, []);
 
   const loadData = async () => {
-    const [txnsRaw, usrs, cats, lnsRaw, glsRaw] = await Promise.all([
+    const [txnsRaw, usrs, cats, accs, lnsRaw, glsRaw] = await Promise.all([
       apiClient.getTransactions(),
       getUsers(),
       getCategories(),
+      getAccounts(),
       apiClient.getLoans(),
       apiClient.getGoals(),
     ]);
@@ -68,6 +74,9 @@ export default function Index() {
       amount:      Number(t.amount ?? 0),
       type:        t.type as Transaction['type'],
       categoryId:  String(t.category_id ?? t.categoryId ?? ''),
+      accountId:   t.account_id ? String(t.account_id) : undefined,
+      accountName: t.account_name ? String(t.account_name) : undefined,
+      accountType: t.account_type ? String(t.account_type) : undefined,
       userId:      String(t.financial_user_id ?? t.userId ?? ''),
       date:        String(t.date ?? ''),
       createdAt:   String(t.created_at ?? t.createdAt ?? ''),
@@ -105,6 +114,7 @@ export default function Index() {
     setTransactions(txns as Transaction[]);
     setUsers(usrs as User[]);
     setCategories(cats as Category[]);
+    setAccounts(accs as Account[]);
     setLoans(lns as unknown as Loan[]);
     setGoals(gls as Goal[]);
   };
@@ -119,6 +129,7 @@ export default function Index() {
     .reduce((sum, t) => sum + t.amount, 0);
 
   const balance = totalIncome - totalExpenses;
+  const totalAccountFunds = accounts.reduce((sum, a) => sum + (a.balance ?? 0), 0);
 
   const thisMonthTransactions = transactions.filter(t => {
     const transactionDate = new Date(t.date);
@@ -403,6 +414,103 @@ export default function Index() {
                 </Card>
               </div>
 
+              {/* Accounts & Payment Methods Overview */}
+              <Card className="border-border bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-card-foreground">
+                      <Wallet className="h-5 w-5 text-primary" />
+                      Accounts & Payment Methods
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Live balances across Bank Accounts, Mobile Banking, and Cash
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-xs text-muted-foreground">Total Liquid Funds</p>
+                      <p className="text-lg font-bold text-primary">{formatCurrency(totalAccountFunds)}</p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setActiveTab('settings')}
+                      className="text-xs"
+                    >
+                      <Settings className="h-3 w-3 mr-1" />
+                      Manage Accounts
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {accounts.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {accounts.map((account) => {
+                        const isBank = account.type === 'bank';
+                        const isMobile = account.type === 'mobile_banking';
+                        const isCash = account.type === 'cash';
+
+                        const Icon = isBank ? Building2 : isMobile ? Smartphone : isCash ? Wallet : CreditCard;
+
+                        return (
+                          <div 
+                            key={account.id}
+                            className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-card to-muted/30 hover:border-primary/40 hover:shadow-md transition-all duration-200"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <div className={`p-2 rounded-lg ${
+                                  isBank ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                                  isMobile ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
+                                  isCash ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                                  'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                }`}>
+                                  <Icon className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-sm truncate max-w-[130px]">{account.name}</p>
+                                  {account.bankName && (
+                                    <p className="text-[11px] text-muted-foreground truncate max-w-[130px]">{account.bankName}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <Badge variant="outline" className="text-[10px] capitalize px-1.5 py-0">
+                                {account.type.replace('_', ' ')}
+                              </Badge>
+                            </div>
+                            <div className="mt-2">
+                              <div className={`text-xl font-bold ${
+                                (account.balance ?? 0) >= 0 ? 'text-foreground' : 'text-red-600 dark:text-red-400'
+                              }`}>
+                                {formatCurrency(account.balance ?? 0)}
+                              </div>
+                              <div className="flex justify-between items-center text-[11px] text-muted-foreground mt-1">
+                                <span>Initial: {formatCurrency(account.initialBalance ?? 0)}</span>
+                                {account.accountNumber && (
+                                  <span className="truncate max-w-[90px]">#{account.accountNumber}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <p className="text-sm">No payment accounts configured yet.</p>
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        onClick={() => setActiveTab('settings')}
+                        className="mt-1 text-primary text-xs"
+                      >
+                        Set up Bank Accounts & Wallets in Settings
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Goals Overview + Quick Stats Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card className="border-border bg-gradient-to-br from-purple-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate cursor-pointer" onClick={() => setActiveTab('goals')}>
@@ -568,7 +676,8 @@ export default function Index() {
                             <div>
                               <p className="font-semibold text-foreground">{transaction.title}</p>
                               <p className="text-sm text-muted-foreground">
-                                {users.find(u => u.id === transaction.userId)?.name} • {categories.find(c => c.id === transaction.categoryId)?.name}
+                                {users.find(u => u.id === transaction.userId)?.name || 'Unknown'} • {categories.find(c => c.id === transaction.categoryId)?.name || 'Uncategorized'}
+                                {transaction.accountName ? ` • ${transaction.accountName}` : ''}
                               </p>
                             </div>
                           </div>
@@ -612,7 +721,7 @@ export default function Index() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
                       <div className="text-center p-6 bg-gradient-to-br from-blue-500/20 to-blue-500/5 rounded-xl border border-blue-500/20 hover-lift">
                         <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{users.length}</p>
                         <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">Financial Users</p>
@@ -628,6 +737,10 @@ export default function Index() {
                       <div className="text-center p-6 bg-gradient-to-br from-orange-500/20 to-orange-500/5 rounded-xl border border-orange-500/20 hover-lift">
                         <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">{categories.length}</p>
                         <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">Categories</p>
+                      </div>
+                      <div className="text-center p-6 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 rounded-xl border border-emerald-500/20 hover-lift">
+                        <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{accounts.length}</p>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">Accounts</p>
                       </div>
                     </div>
                   </CardContent>

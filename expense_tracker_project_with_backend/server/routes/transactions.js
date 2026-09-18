@@ -16,10 +16,17 @@ router.get('/', authenticateToken, (req, res) => {
         const category = t.category_id
           ? db.get('categories').find({ id: t.category_id }).value()
           : null;
+        const accId = t.account_id || t.accountId;
+        const account = accId && db.has('accounts').value()
+          ? db.get('accounts').find({ id: accId }).value()
+          : null;
         return {
           ...t,
           category_name:  category ? category.name  : null,
           category_color: category ? category.color : null,
+          account_id:     accId || null,
+          account_name:   account ? account.name : null,
+          account_type:   account ? account.type : null,
         };
       })
       .sort((a, b) => {
@@ -38,7 +45,7 @@ router.get('/', authenticateToken, (req, res) => {
 // POST /api/transactions — create a new transaction
 router.post('/', authenticateToken, (req, res) => {
   try {
-    const { voucher_id, title, description, amount, type, category_id, financial_user_id, date } = req.body;
+    const { voucher_id, title, description, amount, type, category_id, financial_user_id, account_id, accountId, date } = req.body;
 
     if (!voucher_id || !title || !amount || !type || !date) {
       return res.status(400).json({ error: 'Required fields missing' });
@@ -51,6 +58,7 @@ router.post('/', authenticateToken, (req, res) => {
     }
 
     const now = new Date().toISOString();
+    const targetAccountId = account_id || accountId || null;
     const newTx = {
       id:                uuidv4(),
       user_id:           req.user.id,
@@ -61,6 +69,7 @@ router.post('/', authenticateToken, (req, res) => {
       type,
       category_id:       category_id || null,
       financial_user_id: financial_user_id || null,
+      account_id:        targetAccountId,
       date,
       created_at:        now,
       updated_at:        now,
@@ -79,12 +88,14 @@ router.put('/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { title, description, amount, type, category_id, financial_user_id, date } = req.body;
+    const { title, description, amount, type, category_id, financial_user_id, account_id, accountId, date } = req.body;
 
     const tx = db.get('transactions').find({ id, user_id: userId }).value();
     if (!tx) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
+
+    const targetAccountId = account_id !== undefined ? (account_id || null) : (accountId !== undefined ? (accountId || null) : tx.account_id);
 
     const updated = {
       ...tx,
@@ -94,6 +105,7 @@ router.put('/:id', authenticateToken, (req, res) => {
       type:              type             ?? tx.type,
       category_id:       category_id      !== undefined ? (category_id || null) : tx.category_id,
       financial_user_id: financial_user_id !== undefined ? (financial_user_id || null) : tx.financial_user_id,
+      account_id:        targetAccountId,
       date:              date             ?? tx.date,
       updated_at:        new Date().toISOString(),
     };

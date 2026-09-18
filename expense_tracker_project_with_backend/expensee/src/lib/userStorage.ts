@@ -8,7 +8,7 @@
  * Components should use these functions inside useEffect / React Query hooks.
  */
 
-import { Transaction, User, Category, Loan, Goal } from '@/components/types';
+import { Transaction, User, Category, Loan, Goal, Account } from '@/components/types';
 import { apiClient } from './api';
 import { getDhakaDateKey } from './dhakaTime';
 
@@ -86,6 +86,36 @@ export const getUserCategories = async (): Promise<Category[]> => {
 
 export const saveUserCategories = async (_categories: Category[]): Promise<void> => {
   console.warn('saveUserCategories: category mutation not yet implemented via server');
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getUserAccounts = async (): Promise<Account[]> => {
+  try {
+    const raw = (await apiClient.getAccounts()) as Record<string, unknown>[];
+    return raw.map(a => {
+      const bal = Number(a.current_balance ?? a.balance ?? a.initial_balance ?? 0);
+      return {
+        id:             String(a.id ?? ''),
+        name:           String(a.name ?? ''),
+        type:           (a.type as Account['type']) || 'bank',
+        bankName:       a.bank_name ? String(a.bank_name) : undefined,
+        accountNumber:  a.account_number ? String(a.account_number) : undefined,
+        initialBalance: Number(a.initial_balance ?? 0),
+        currentBalance: bal,
+        balance:        bal,
+        color:          a.color ? String(a.color) : undefined,
+        icon:           a.icon ? String(a.icon) : undefined,
+        createdAt:      String(a.created_at ?? ''),
+        updatedAt:      a.updated_at ? String(a.updated_at) : undefined,
+      };
+    });
+  } catch (e) {
+    console.error('getUserAccounts error:', e);
+    return [];
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

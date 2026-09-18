@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { getUsers, getCategories, generateVoucherId, formatCurrency } from '@/lib/storage';
+import { getUsers, getCategories, getAccounts, generateVoucherId, formatCurrency } from '@/lib/storage';
 import { apiClient } from '@/lib/api';
 import { downloadVoucher } from '@/lib/voucherGenerator';
 import { downloadMonthlyStatement } from '@/lib/monthlyStatementPDF';
@@ -20,7 +20,7 @@ import {
   getDhakaYear,
   getStoredDateInputValue
 } from '@/lib/dhakaTime';
-import { Transaction, User, Category } from '@/components/types';
+import { Transaction, User, Category, Account } from '@/components/types';
 import { Plus, Edit, Trash2, Download, Search, Filter, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 
 interface TransactionManagerProps {
@@ -31,12 +31,14 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [previewVoucherId, setPreviewVoucherId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterAccount, setFilterAccount] = useState('all');
   const [filterUser, setFilterUser] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -55,6 +57,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     amount: '',
     type: 'expense' as 'income' | 'expense' | 'loan_given' | 'loan_taken',
     categoryId: '',
+    accountId: '',
     userId: '',
     date: getDhakaDateInputValue()
   });
@@ -65,16 +68,18 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
 
   const loadData = async () => {
     try {
-      const [txnsRaw, usrs, cats] = await Promise.all([
+      const [txnsRaw, usrs, cats, accs] = await Promise.all([
         apiClient.getTransactions(),
         getUsers(),
         getCategories(),
+        getAccounts(),
       ]);
       // Map server snake_case → frontend camelCase
       const txns = (txnsRaw as Record<string, unknown>[]).map(mapServerTransaction);
       setTransactions(txns as Transaction[]);
       setUsers(usrs as User[]);
       setCategories(cats as Category[]);
+      setAccounts(accs as Account[]);
     } catch (e) {
       console.error('loadData error', e);
     }
@@ -89,6 +94,9 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     amount:      Number(t.amount ?? 0),
     type:        t.type as Transaction['type'],
     categoryId:  String(t.category_id ?? t.categoryId ?? ''),
+    accountId:   String(t.account_id ?? t.accountId ?? ''),
+    accountName: t.account_name ? String(t.account_name) : undefined,
+    accountType: t.account_type ? String(t.account_type) : undefined,
     userId:      String(t.financial_user_id ?? t.userId ?? ''),
     date:        String(t.date ?? ''),
     createdAt:   String(t.created_at ?? t.createdAt ?? ''),
@@ -102,12 +110,12 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       amount: '',
       type: 'expense',
       categoryId: '',
+      accountId: accounts[0]?.id || '',
       userId: '',
       date: getDhakaDateInputValue()
     });
     setEditingTransaction(null);
     setPreviewVoucherId('');
-    // Do NOT pre-fetch here — that would burn a counter slot if user cancels
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,6 +134,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
         amount:            parseFloat(formData.amount),
         type:              formData.type,
         category_id:       formData.categoryId || null,
+        account_id:        formData.accountId || null,
         financial_user_id: formData.userId || null,
         date:              txDate,
       };
@@ -157,6 +166,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       amount: transaction.amount.toString(),
       type: transaction.type,
       categoryId: transaction.categoryId,
+      accountId: transaction.accountId || '',
       userId: transaction.userId,
       date: getStoredDateInputValue(transaction.date)
     });
@@ -177,9 +187,13 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
 
   const handleDownloadVoucher = (transaction: Transaction) => {
     const user = users.find(u => u.id === transaction.userId);
-    const category = categories.find(c => c.id === transaction.categoryId);
+    const category = categories.find(c => c.id === transaction.categoryId) || {
+      id: transaction.categoryId || 'uncategorized',
+      name: 'Uncategorized',
+      color: '#6B7280',
+    };
     
-    if (user && category) {
+    if (user) {
       downloadVoucher(transaction, user, category);
     }
   };
@@ -210,13 +224,14 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
       
       const matchesType = filterType === 'all' || transaction.type === filterType;
       const matchesCategory = filterCategory === 'all' || transaction.categoryId === filterCategory;
+      const matchesAccount = filterAccount === 'all' || transaction.accountId === filterAccount;
       const matchesUser = filterUser === 'all' || transaction.userId === filterUser;
       
       const transactionDate = getStoredDateInputValue(transaction.date);
       const matchesDateFrom = !dateFrom || transactionDate >= dateFrom;
       const matchesDateTo = !dateTo || transactionDate <= dateTo;
 
-      return matchesSearch && matchesType && matchesCategory && matchesUser && matchesDateFrom && matchesDateTo;
+      return matchesSearch && matchesType && matchesCategory && matchesAccount && matchesUser && matchesDateFrom && matchesDateTo;
     });
   };
 
@@ -230,7 +245,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterType, filterCategory, filterUser, dateFrom, dateTo]);
+  }, [searchTerm, filterType, filterCategory, filterAccount, filterUser, dateFrom, dateTo]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -437,6 +452,41 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                 )}
               </div>
 
+              <div>
+                <Label htmlFor="account">Payment / Bank Account</Label>
+                <Select
+                  value={formData.accountId}
+                  onValueChange={(value) => setFormData({ ...formData, accountId: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account (Cash, Bank, Wallet)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id}>
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <div className="flex items-center gap-2">
+                            <span>{acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')}</span>
+                            <span>{acc.name}</span>
+                          </div>
+                          <span className={`text-xs ${(acc.currentBalance ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            ({formatCurrency(acc.currentBalance ?? 0)})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {accounts.length === 0 && (
+                      <div className="p-2 text-sm text-muted-foreground">
+                        Defaulting to Cash
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Payment will automatically adjust this account's balance.
+                </p>
+              </div>
+
               <div className="flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
@@ -510,7 +560,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             <div>
               <Label htmlFor="search">Search</Label>
               <div className="relative">
@@ -552,6 +602,23 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                   {categories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="filterAccount">Account</Label>
+              <Select value={filterAccount} onValueChange={setFilterAccount}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Accounts</SelectItem>
+                  {accounts.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -624,6 +691,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                       <TableHead>Title</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Category</TableHead>
+                      <TableHead>Account</TableHead>
                       <TableHead>User</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Actions</TableHead>
@@ -633,6 +701,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                     {currentTransactions.map((transaction) => {
                       const user = users.find(u => u.id === transaction.userId);
                       const category = categories.find(c => c.id === transaction.categoryId);
+                      const account = accounts.find(a => a.id === transaction.accountId);
                       
                       return (
                         <TableRow key={transaction.id}>
@@ -669,7 +738,20 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                                 {category.name}
                               </div>
                             ) : (
-                              <span className="text-muted-foreground">Unknown</span>
+                              <span className="text-muted-foreground italic text-xs">Uncategorized</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {account ? (
+                              <Badge variant="outline" className="font-normal text-xs">
+                                {account.name}
+                              </Badge>
+                            ) : transaction.accountName ? (
+                              <Badge variant="outline" className="font-normal text-xs">
+                                {transaction.accountName}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Cash</span>
                             )}
                           </TableCell>
                           <TableCell>{user?.name || 'Unknown'}</TableCell>

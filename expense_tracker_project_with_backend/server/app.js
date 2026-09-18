@@ -41,6 +41,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'OK', ts: new Date().toI
 app.use('/api/auth',         require('./routes/auth'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/categories',   require('./routes/categories'));
+app.use('/api/accounts',     require('./routes/accounts'));
 
 // ── Extended user-data routes (all server-side, no more localStorage) ────────
 app.use('/api/loans',            require('./routes/loans'));

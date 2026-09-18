@@ -16,6 +16,21 @@ export interface Category {
   createdAt: string;
 }
 
+export interface Account {
+  id: string;
+  name: string;
+  type: 'cash' | 'bank' | 'mobile_wallet' | 'credit_card' | 'savings' | 'other';
+  bankName?: string;
+  accountNumber?: string;
+  initialBalance: number;
+  currentBalance?: number;
+  balance?: number;
+  color?: string;
+  icon?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Transaction {
   id: string;
   voucherId: string;
@@ -25,6 +40,9 @@ export interface Transaction {
   type: 'income' | 'expense' | 'loan_given' | 'loan_taken';
   categoryId: string;
   userId: string;
+  accountId?: string;
+  accountName?: string;
+  accountType?: string;
   date: string;
   createdAt: string;
   updatedAt: string;

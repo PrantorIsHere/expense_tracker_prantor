@@ -123,6 +123,22 @@ export function generateCategoryBreakdownPDF(transactions: Transaction[], catego
     };
   });
 
+  const knownCategoryIds = new Set(categories.map(c => c.id));
+  const uncategorizedTxs = transactions.filter(t => !t.categoryId || !knownCategoryIds.has(t.categoryId));
+  if (uncategorizedTxs.length > 0) {
+    const income = uncategorizedTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expense = uncategorizedTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    stats.push({
+      id: 'uncategorized',
+      name: 'Uncategorized',
+      color: '#6B7280',
+      income,
+      expense,
+      net: income - expense,
+      count: uncategorizedTxs.length,
+    });
+  }
+
   const totalIncome = stats.reduce((sum, s) => sum + s.income, 0);
   const totalExpense = stats.reduce((sum, s) => sum + s.expense, 0);
 

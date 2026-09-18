@@ -10,6 +10,7 @@ type TransactionPayload = {
   type: 'income' | 'expense' | 'loan_given' | 'loan_taken';
   category_id?: string | null;
   financial_user_id?: string | null;
+  account_id?: string | null;
   date: string;
 };
 
@@ -37,6 +38,15 @@ type GoalPayload = {
 
 type CategoryPayload = {
   name: string;
+  color?: string;
+  icon?: string;
+};
+
+type AccountPayload = {
+  name: string;
+  type?: 'cash' | 'bank' | 'mobile_wallet' | 'credit_card' | 'savings' | 'other';
+  account_number?: string | null;
+  initial_balance?: number;
   color?: string;
   icon?: string;
 };
@@ -163,6 +173,19 @@ class ApiClient {
   }
   async deleteCategory(id: string) {
     return this.request(`/categories/${id}`, { method: 'DELETE' });
+  }
+
+  // ── Accounts ──────────────────────────────────────────────────────────────
+
+  async getAccounts() { return this.request('/accounts'); }
+  async createAccount(acc: AccountPayload) {
+    return this.request('/accounts', { method: 'POST', body: JSON.stringify(acc) });
+  }
+  async updateAccount(id: string, acc: Partial<AccountPayload>) {
+    return this.request(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify(acc) });
+  }
+  async deleteAccount(id: string) {
+    return this.request(`/accounts/${id}`, { method: 'DELETE' });
   }
 
   // ── Loans ─────────────────────────────────────────────────────────────────
