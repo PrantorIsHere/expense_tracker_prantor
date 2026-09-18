@@ -514,57 +514,57 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
         <TabsContent value="accounts" className="space-y-6">
           {/* Accounts Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200">
+            <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200 dark:from-emerald-950/40 dark:to-teal-950/20 dark:border-emerald-800/50">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-emerald-700">Total Funds (All Accounts)</p>
-                  <p className="text-xl font-bold text-emerald-900 mt-1">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Total Funds (All Accounts)</p>
+                  <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100 mt-1">
                     {formatCurrency(accounts.reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-300">
                   <Wallet className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+            <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 dark:from-blue-950/40 dark:to-indigo-950/20 dark:border-blue-800/50">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-blue-700">Bank Accounts</p>
-                  <p className="text-xl font-bold text-blue-900 mt-1">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Bank Accounts</p>
+                  <p className="text-xl font-bold text-blue-900 dark:text-blue-100 mt-1">
                     {formatCurrency(accounts.filter(a => a.type === 'bank' || a.type === 'savings').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-300">
                   <Landmark className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200">
+            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 dark:from-amber-950/40 dark:to-orange-950/20 dark:border-amber-800/50">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-amber-700">Cash in Hand</p>
-                  <p className="text-xl font-bold text-amber-900 mt-1">
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Cash in Hand</p>
+                  <p className="text-xl font-bold text-amber-900 dark:text-amber-100 mt-1">
                     {formatCurrency(accounts.filter(a => a.type === 'cash').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-300">
                   <Wallet className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200 dark:from-purple-950/40 dark:to-pink-950/20 dark:border-purple-800/50">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-purple-700">Mobile Wallets</p>
-                  <p className="text-xl font-bold text-purple-900 mt-1">
+                  <p className="text-xs font-medium text-purple-700 dark:text-purple-300">Mobile Wallets</p>
+                  <p className="text-xl font-bold text-purple-900 dark:text-purple-100 mt-1">
                     {formatCurrency(accounts.filter(a => a.type === 'mobile_wallet').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
+                <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center text-purple-600 dark:text-purple-300">
                   <Smartphone className="h-5 w-5" />
                 </div>
               </CardContent>
@@ -802,10 +802,13 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
 
               <div className="space-y-2">
                 {categories.map((category) => (
-                  <div key={category.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-3">
+                  <div
+                    key={category.id}
+                    className="flex items-center justify-between p-3 bg-muted/40 hover:bg-muted/70 dark:bg-card dark:hover:bg-accent/40 rounded-lg border border-border transition-colors duration-150"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0 mr-3">
                       <div
-                        className="w-4 h-4 rounded-full flex-shrink-0"
+                        className="w-4 h-4 rounded-full flex-shrink-0 ring-2 ring-background"
                         style={{ backgroundColor: category.color }}
                       />
                       {editingCategory === category.id ? (
@@ -813,36 +816,59 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                           value={editCategoryName}
                           onChange={(e) => setEditCategoryName(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && handleSaveCategory()}
-                          className="h-8"
+                          className="h-8 max-w-sm"
+                          autoFocus
                         />
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{category.name}</span>
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="font-medium text-foreground text-sm truncate">
+                            {category.name}
+                          </span>
                           {categoryUsage[category.id] !== undefined && categoryUsage[category.id] > 0 ? (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-300 dark:border dark:border-blue-800/40 font-medium">
                               {categoryUsage[category.id]} {categoryUsage[category.id] === 1 ? 'transaction' : 'transactions'}
                             </span>
                           ) : (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-normal">
                               0 transactions
                             </span>
                           )}
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       {editingCategory === category.id ? (
-                        <Button size="sm" onClick={handleSaveCategory}>
-                          <Save className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button size="sm" onClick={handleSaveCategory} className="h-8 px-2.5">
+                            <Save className="h-4 w-4 mr-1" />
+                            Save
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingCategory(null)} className="h-8 px-2.5">
+                            Cancel
+                          </Button>
+                        </>
                       ) : (
-                        <Button size="sm" variant="ghost" onClick={() => handleEditCategory(category.id)}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEditCategory(category.id)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            title="Edit category"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteCategory(category.id)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+                            title="Delete category"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => handleDeleteCategory(category.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
                   </div>
                 ))}
