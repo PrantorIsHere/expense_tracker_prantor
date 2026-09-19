@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiClient } from '@/lib/api';
-import { getUsers, getAccounts, formatCurrency } from '@/lib/storage';
+import { getUsers, getAccounts, getCategories, formatCurrency } from '@/lib/storage';
 import { getDhakaDateInputValue } from '@/lib/dhakaTime';
-import { User, Account } from '@/components/types';
+import { User, Account, Category } from '@/components/types';
 import { 
   Plus, 
   CheckCircle, 
@@ -25,7 +25,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   DollarSign,
-  Trash2
+  Trash2,
+  HeartHandshake
 } from 'lucide-react';
 
 interface LoansManagerProps {
@@ -42,11 +43,13 @@ interface ServerLoan {
   description: string | null;
   date: string;
   due_date: string | null;
-  status: 'pending' | 'paid' | 'partial';
+  status: 'pending' | 'paid' | 'partial' | 'forgiven';
   account_id?: string | null;
   repaid_amount?: number;
   repaid_date?: string | null;
   repaid_account_id?: string | null;
+  forgiven_amount?: number;
+  forgiven_date?: string | null;
   userId?: string; // for old loans
   created_at: string;
   updated_at: string;
@@ -56,6 +59,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   const [loans, setLoans] = useState<ServerLoan[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -86,6 +90,16 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   });
   const [repaySubmitting, setRepaySubmitting] = useState(false);
 
+  // Forgive Loan Modal State
+  const [isForgiveDialogOpen, setIsForgiveDialogOpen] = useState(false);
+  const [forgivingLoan, setForgivingLoan] = useState<ServerLoan | null>(null);
+  const [forgiveFormData, setForgiveFormData] = useState({
+    categoryId: '',
+    date: '',
+    notes: '',
+  });
+  const [forgiveSubmitting, setForgiveSubmitting] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -96,14 +110,16 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
 
   const loadData = async () => {
     try {
-      const [rawLoans, usrs, accs] = await Promise.all([
+      const [rawLoans, usrs, accs, cats] = await Promise.all([
         apiClient.getLoans(),
         getUsers(),
         getAccounts(),
+        getCategories(),
       ]);
       setLoans(rawLoans as ServerLoan[]);
       setUsers(usrs as User[]);
       setAccounts(accs as Account[]);
+      setCategories(cats as Category[]);
     } catch (e) {
       console.error('LoansManager loadData error', e);
     }
@@ -212,6 +228,43 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     }
   };
 
+  const openForgiveDialog = (loan: ServerLoan) => {
+    const personName = loan.person || users.find(u => u.id === loan.userId)?.name || 'Contact';
+    const remainingAmount = Math.max(0, loan.amount - (loan.repaid_amount || 0));
+    const forgivenCat = categories.find(c => c.name.toLowerCase().includes('forgiven') || c.name.toLowerCase().includes('bad debt'));
+
+    setForgivingLoan(loan);
+    setForgiveFormData({
+      categoryId: forgivenCat ? forgivenCat.id : (categories[0]?.id || ''),
+      date: getDhakaDateInputValue(),
+      notes: `Forgiven loan to ${personName} (walked over)`,
+    });
+    setIsForgiveDialogOpen(true);
+  };
+
+  const handleConfirmForgive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgivingLoan) return;
+
+    setForgiveSubmitting(true);
+    try {
+      await apiClient.forgiveLoan(forgivingLoan.id, {
+        category_id: forgiveFormData.categoryId || undefined,
+        date: forgiveFormData.date ? new Date(forgiveFormData.date).toISOString() : new Date().toISOString(),
+        notes: forgiveFormData.notes,
+      });
+
+      await loadData();
+      onDataChange();
+      setIsForgiveDialogOpen(false);
+      setForgivingLoan(null);
+    } catch (err) {
+      alert(`Failed to forgive loan: ${(err as Error).message}`);
+    } finally {
+      setForgiveSubmitting(false);
+    }
+  };
+
   const handleDeleteLoan = async (loanId: string) => {
     if (confirm('Are you sure you want to delete this loan record?')) {
       try {
@@ -255,7 +308,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     const matchesStatus =
       filterStatus === 'all' ||
       loan.status === filterStatus ||
-      (filterStatus === 'repaid' && loan.status === 'paid');
+      (filterStatus === 'paid' && loan.status === 'paid') ||
+      (filterStatus === 'repaid' && loan.status === 'paid') ||
+      (filterStatus === 'forgiven' && loan.status === 'forgiven');
 
     return matchesSearch && matchesType && matchesStatus;
   }).sort((a, b) => {
@@ -567,6 +622,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="paid">Repaid / Paid</SelectItem>
+                  <SelectItem value="forgiven">Forgiven / Walked Over</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -656,11 +712,23 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={loan.status === 'pending' ? 'outline' : 'default'}>
+                          <Badge 
+                            variant={loan.status === 'pending' ? 'outline' : 'default'}
+                            className={
+                              loan.status === 'forgiven'
+                                ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                : ''
+                            }
+                          >
                             {loan.status === 'pending' ? (
                               <>
                                 <Clock className="mr-1 h-3 w-3" />
                                 PENDING
+                              </>
+                            ) : loan.status === 'forgiven' ? (
+                              <>
+                                <HeartHandshake className="mr-1 h-3 w-3 text-amber-600" />
+                                FORGIVEN
                               </>
                             ) : (
                               <>
@@ -673,15 +741,30 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             {loan.status === 'pending' && (
-                              <Button
-                                size="sm"
-                                variant="default"
-                                className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs font-medium"
-                                onClick={() => openRepayDialog(loan)}
-                              >
-                                <CheckCircle className="mr-1 h-3.5 w-3.5" />
-                                Mark Repaid
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs font-medium"
+                                  onClick={() => openRepayDialog(loan)}
+                                  title="Mark loan as repaid"
+                                >
+                                  <CheckCircle className="mr-1 h-3.5 w-3.5" />
+                                  Mark Repaid
+                                </Button>
+                                {loan.type === 'given' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 h-8 text-xs font-medium"
+                                    onClick={() => openForgiveDialog(loan)}
+                                    title="Forgive / walk over this loan (converts to permanent expense)"
+                                  >
+                                    <HeartHandshake className="mr-1 h-3.5 w-3.5 text-amber-600" />
+                                    Forgive
+                                  </Button>
+                                )}
+                              </>
                             )}
                             <Button
                               size="sm"
@@ -912,6 +995,122 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   {repaySubmitting ? 'Recording...' : 'Confirm Repayment'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Forgive Loan Modal */}
+      <Dialog open={isForgiveDialogOpen} onOpenChange={setIsForgiveDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+              <HeartHandshake className="h-5 w-5 text-amber-600" />
+              Forgive Loan (Walk Over)
+            </DialogTitle>
+          </DialogHeader>
+
+          {forgivingLoan && (
+            <form onSubmit={handleConfirmForgive} className="space-y-4 pt-2">
+              {/* Warning/Explanation banner */}
+              <div className="rounded-lg p-3 border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100">
+                <p className="text-xs leading-relaxed">
+                  You are forgiving the remaining loan of <strong className="font-bold">৳{Math.max(0, forgivingLoan.amount - (forgivingLoan.repaid_amount || 0)).toLocaleString()}</strong> to <strong className="font-bold">{forgivingLoan.person || 'Contact'}</strong>.
+                </p>
+                <p className="text-xs mt-1.5 opacity-90">
+                  ⚠️ This loan will be <strong>removed from active pending loans</strong> and converted into a <strong>permanent expense</strong>.
+                </p>
+              </div>
+
+              {/* Loan details summary */}
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs text-muted-foreground border">
+                <div className="flex justify-between">
+                  <span>Contact:</span>
+                  <span className="font-semibold text-foreground">{forgivingLoan.person || 'Contact'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Original Amount:</span>
+                  <span className="font-semibold text-foreground">{formatCurrency(forgivingLoan.amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Forgiven Amount:</span>
+                  <span className="font-semibold text-rose-600">
+                    {formatCurrency(Math.max(0, forgivingLoan.amount - (forgivingLoan.repaid_amount || 0)))}
+                  </span>
+                </div>
+              </div>
+
+              {/* Expense Category */}
+              <div>
+                <Label htmlFor="forgiveCategory" className="text-sm font-medium">
+                  Expense Category
+                </Label>
+                <Select
+                  value={forgiveFormData.categoryId}
+                  onValueChange={(val) => setForgiveFormData({ ...forgiveFormData, categoryId: val })}
+                >
+                  <SelectTrigger id="forgiveCategory" className="mt-1">
+                    <SelectValue placeholder="Select Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Defaults to "Loan Forgiven" / "Bad Debt" expense category.
+                </p>
+              </div>
+
+              {/* Date */}
+              <div>
+                <Label htmlFor="forgiveDate" className="text-sm font-medium">
+                  Date
+                </Label>
+                <Input
+                  id="forgiveDate"
+                  type="date"
+                  className="mt-1"
+                  value={forgiveFormData.date}
+                  onChange={(e) => setForgiveFormData({ ...forgiveFormData, date: e.target.value })}
+                  required
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <Label htmlFor="forgiveNotes" className="text-sm font-medium">
+                  Remarks / Reason
+                </Label>
+                <Input
+                  id="forgiveNotes"
+                  className="mt-1"
+                  value={forgiveFormData.notes}
+                  onChange={(e) => setForgiveFormData({ ...forgiveFormData, notes: e.target.value })}
+                  placeholder="e.g. Forgiven loan / walked over"
+                />
+              </div>
+
+              <DialogFooter className="pt-2 flex gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsForgiveDialogOpen(false)}
+                  disabled={forgiveSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={forgiveSubmitting}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {forgiveSubmitting ? 'Recording...' : 'Confirm & Forgive Loan'}
                 </Button>
               </DialogFooter>
             </form>

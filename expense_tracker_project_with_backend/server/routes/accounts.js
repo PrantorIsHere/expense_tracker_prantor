@@ -11,18 +11,54 @@ const calculateAccountBalance = (account, userTxs) => {
   let txSum = 0;
 
   for (const t of userTxs) {
-    const accId = t.account_id || t.accountId;
-    if (accId === account.id) {
-      const amt = parseFloat(t.amount) || 0;
-      if (t.type === 'income' || t.type === 'loan_taken') {
-        txSum += amt;
-      } else if (t.type === 'expense' || t.type === 'loan_given') {
-        txSum -= amt;
+    const amt = parseFloat(t.amount) || 0;
+    const fromAccId = t.account_id || t.accountId;
+    const toAccId = t.to_account_id || t.toAccountId;
+
+    if (t.type === 'transfer') {
+      if (fromAccId === account.id) {
+        txSum -= amt; // Outflow from source account
+      }
+      if (toAccId === account.id) {
+        txSum += amt; // Inflow to destination account
+      }
+    } else {
+      if (fromAccId === account.id) {
+        if (t.type === 'income' || t.type === 'loan_taken') {
+          txSum += amt;
+        } else if (t.type === 'expense' || t.type === 'loan_given') {
+          txSum -= amt;
+        }
       }
     }
   }
 
   return initial + txSum;
+};
+
+// Helper to generate sequential voucher ID in Dhaka time (V-YYYYMMDD-XXXX)
+const generateNextVoucherId = (userId, dateInput) => {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const dhakaStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
+  const dateKey = dhakaStr.replace(/-/g, '');
+
+  const userTxs = db.get('transactions')
+    .filter({ user_id: userId })
+    .value();
+
+  let maxNum = 0;
+  const regex = new RegExp(`^V?[-_]?${dateKey}[-_](\\d+)`, 'i');
+  for (const t of userTxs) {
+    const vid = t.voucher_id || t.voucherId || '';
+    const match = vid.match(regex);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > maxNum) maxNum = n;
+    }
+  }
+
+  const nextSeq = String(maxNum + 1).padStart(4, '0');
+  return `V-${dateKey}-${nextSeq}`;
 };
 
 // GET /api/accounts — get all accounts with live calculated balances for current user
@@ -212,5 +248,90 @@ router.delete('/:id', authenticateToken, (req, res) => {
   }
 });
 
+// POST /api/accounts/transfer — transfer money between two accounts
+router.post('/transfer', authenticateToken, (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { from_account_id, to_account_id, amount, date, notes } = req.body;
+
+    if (!from_account_id || !to_account_id) {
+      return res.status(400).json({ error: 'Both source and destination accounts are required' });
+    }
+
+    if (from_account_id === to_account_id) {
+      return res.status(400).json({ error: 'Source and destination accounts must be different' });
+    }
+
+    const transferAmount = parseFloat(amount);
+    if (isNaN(transferAmount) || transferAmount <= 0) {
+      return res.status(400).json({ error: 'Transfer amount must be greater than 0' });
+    }
+
+    const fromAccount = db.get('accounts').find({ id: from_account_id, user_id: userId }).value();
+    const toAccount = db.get('accounts').find({ id: to_account_id, user_id: userId }).value();
+
+    if (!fromAccount || !toAccount) {
+      return res.status(404).json({ error: 'One or both accounts could not be found' });
+    }
+
+    const now = new Date().toISOString();
+    const txDate = date || now;
+    const voucherId = generateNextVoucherId(userId, txDate);
+
+    // Find or create 'Transfer' category
+    let category = db.get('categories')
+      .find(c => (c.user_id === userId || c.user_id === null) && c.name.toLowerCase() === 'transfer')
+      .value();
+
+    if (!category) {
+      category = {
+        id: uuidv4(),
+        user_id: userId,
+        name: 'Transfer',
+        color: '#6366F1',
+        icon: 'arrow-left-right',
+        created_at: now,
+        updated_at: now,
+      };
+      db.get('categories').push(category).write();
+    }
+
+    const newTx = {
+      id:            uuidv4(),
+      user_id:       userId,
+      voucher_id:    voucherId,
+      title:         `Transfer: ${fromAccount.name} → ${toAccount.name}`,
+      description:   notes || `Transferred from ${fromAccount.name} to ${toAccount.name}`,
+      amount:        transferAmount,
+      type:          'transfer',
+      category_id:   category.id,
+      account_id:    from_account_id,
+      to_account_id: to_account_id,
+      date:          txDate,
+      created_at:    now,
+      updated_at:    now,
+    };
+
+    db.get('transactions').push(newTx).write();
+
+    // Recalculate both balances
+    const userTxs = db.get('transactions').filter({ user_id: userId }).value();
+    const fromBalance = calculateAccountBalance(fromAccount, userTxs);
+    const toBalance = calculateAccountBalance(toAccount, userTxs);
+
+    res.status(201).json({
+      success: true,
+      transaction: newTx,
+      from_account: { ...fromAccount, current_balance: fromBalance },
+      to_account: { ...toAccount, current_balance: toBalance },
+      message: `Successfully transferred ${transferAmount} from ${fromAccount.name} to ${toAccount.name}`
+    });
+  } catch (e) {
+    console.error('transfer funds error', e);
+    res.status(500).json({ error: 'Failed to process account transfer' });
+  }
+});
+
 module.exports = router;
+
 

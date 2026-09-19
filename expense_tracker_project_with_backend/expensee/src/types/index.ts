@@ -37,12 +37,14 @@ export interface Transaction {
   title: string;
   description?: string;
   amount: number;
-  type: 'income' | 'expense' | 'loan_given' | 'loan_taken';
+  type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'transfer';
   categoryId: string;
   userId: string;
   accountId?: string;
   accountName?: string;
   accountType?: string;
+  toAccountId?: string;
+  toAccountName?: string;
   date: string;
   createdAt: string;
   updatedAt: string;
@@ -54,9 +56,11 @@ export interface Loan {
   userId: string;
   amount: number;
   type: 'given' | 'taken';
-  status: 'pending' | 'repaid';
+  status: 'pending' | 'repaid' | 'paid' | 'partial' | 'forgiven';
   dueDate?: string;
   repaidDate?: string;
+  forgivenDate?: string;
+  forgivenAmount?: number;
   createdAt: string;
 }
 

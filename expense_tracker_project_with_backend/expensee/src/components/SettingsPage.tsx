@@ -41,8 +41,11 @@ import {
   Smartphone,
   CreditCard,
   PiggyBank,
-  Check
+  Check,
+  ArrowLeftRight,
+  ArrowRight
 } from 'lucide-react';
+import { getDhakaDateInputValue } from '@/lib/dhakaTime';
 
 interface SettingsPageProps {
   onDataChange: () => void;
@@ -89,6 +92,18 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     initialBalance: '',
     color: '#4ECDC4',
   });
+
+  // Transfer state
+  const [transferData, setTransferData] = useState({
+    fromAccountId: '',
+    toAccountId: '',
+    amount: '',
+    date: getDhakaDateInputValue(),
+    notes: '',
+  });
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
+  const [transferMessage, setTransferMessage] = useState('');
+  const [transferError, setTransferError] = useState('');
 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -324,6 +339,77 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
       onDataChange();
     } catch (err) {
       setError((err as Error).message || 'Failed to delete account');
+    }
+  };
+
+  const handleTransfer = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setTransferError('');
+    setTransferMessage('');
+
+    if (!transferData.fromAccountId || !transferData.toAccountId) {
+      setTransferError('Please select both From and To accounts.');
+      return;
+    }
+    if (transferData.fromAccountId === transferData.toAccountId) {
+      setTransferError('Source and Destination accounts must be different.');
+      return;
+    }
+    const amt = parseFloat(transferData.amount);
+    if (isNaN(amt) || amt <= 0) {
+      setTransferError('Please enter a valid amount greater than 0.');
+      return;
+    }
+
+    const fromAcc = accounts.find(a => a.id === transferData.fromAccountId);
+    const toAcc = accounts.find(a => a.id === transferData.toAccountId);
+
+    setTransferSubmitting(true);
+    try {
+      await apiClient.transferFunds({
+        from_account_id: transferData.fromAccountId,
+        to_account_id: transferData.toAccountId,
+        amount: amt,
+        date: transferData.date ? new Date(transferData.date).toISOString() : new Date().toISOString(),
+        notes: transferData.notes || undefined,
+      });
+
+      setTransferMessage(`Successfully transferred ${formatCurrency(amt)} from ${fromAcc?.name || 'account'} to ${toAcc?.name || 'account'}.`);
+      setTransferData({
+        fromAccountId: '',
+        toAccountId: '',
+        amount: '',
+        date: getDhakaDateInputValue(),
+        notes: '',
+      });
+      await loadAccounts();
+      await loadDataSummary();
+      onDataChange();
+    } catch (err) {
+      setTransferError(`Transfer failed: ${(err as Error).message}`);
+    } finally {
+      setTransferSubmitting(false);
+    }
+  };
+
+  const handleSwapTransferAccounts = () => {
+    setTransferData(prev => ({
+      ...prev,
+      fromAccountId: prev.toAccountId,
+      toAccountId: prev.fromAccountId,
+    }));
+  };
+
+  const handleQuickTransferFrom = (accountId: string) => {
+    const otherAccount = accounts.find(a => a.id !== accountId);
+    setTransferData(prev => ({
+      ...prev,
+      fromAccountId: accountId,
+      toAccountId: prev.toAccountId === accountId ? (otherAccount?.id || '') : prev.toAccountId || (otherAccount?.id || ''),
+    }));
+    const transferCard = document.getElementById('transfer-card');
+    if (transferCard) {
+      transferCard.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -571,6 +657,207 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
             </Card>
           </div>
 
+          {/* Transfer Money Between Accounts Card */}
+          <Card id="transfer-card" className="border-indigo-200 dark:border-indigo-800/60 bg-gradient-to-br from-indigo-50/50 via-background to-purple-50/30 dark:from-indigo-950/20 dark:via-background dark:to-purple-950/10 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-indigo-950 dark:text-indigo-100">
+                <ArrowLeftRight className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                Transfer Money Between Accounts
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Move funds between your accounts (e.g. Bank to Cash, Bank to bKash, Cash to Bank) without altering your overall total balance.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {transferMessage && (
+                <Alert className="mb-4 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 text-emerald-800 dark:text-emerald-200">
+                  <Check className="h-4 w-4 text-emerald-600 mr-2" />
+                  <AlertDescription>{transferMessage}</AlertDescription>
+                </Alert>
+              )}
+              {transferError && (
+                <Alert className="mb-4 bg-rose-50 dark:bg-rose-950/40 border-rose-300 text-rose-800 dark:text-rose-200">
+                  <AlertDescription>{transferError}</AlertDescription>
+                </Alert>
+              )}
+
+              <form onSubmit={handleTransfer} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-end">
+                  {/* From Account */}
+                  <div className="md:col-span-4">
+                    <Label htmlFor="fromAcc" className="text-xs font-semibold">From Account (Source) *</Label>
+                    <Select
+                      value={transferData.fromAccountId}
+                      onValueChange={(val) => setTransferData({ ...transferData, fromAccountId: val })}
+                    >
+                      <SelectTrigger id="fromAcc" className="mt-1 bg-background">
+                        <SelectValue placeholder="Select Source Account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id} disabled={acc.id === transferData.toAccountId}>
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span>{acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')} {acc.name}</span>
+                              <span className="text-xs text-muted-foreground font-mono">
+                                ৳{Number(acc.currentBalance ?? acc.balance ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Swap Button */}
+                  <div className="md:col-span-1 flex justify-center pb-0.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleSwapTransferAccounts}
+                      disabled={!transferData.fromAccountId && !transferData.toAccountId}
+                      className="h-10 w-10 rounded-full border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+                      title="Swap Source and Destination"
+                    >
+                      <ArrowLeftRight className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    </Button>
+                  </div>
+
+                  {/* To Account */}
+                  <div className="md:col-span-4">
+                    <Label htmlFor="toAcc" className="text-xs font-semibold">To Account (Destination) *</Label>
+                    <Select
+                      value={transferData.toAccountId}
+                      onValueChange={(val) => setTransferData({ ...transferData, toAccountId: val })}
+                    >
+                      <SelectTrigger id="toAcc" className="mt-1 bg-background">
+                        <SelectValue placeholder="Select Destination Account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id} disabled={acc.id === transferData.fromAccountId}>
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span>{acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')} {acc.name}</span>
+                              <span className="text-xs text-muted-foreground font-mono">
+                                ৳{Number(acc.currentBalance ?? acc.balance ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="md:col-span-2">
+                    <Label htmlFor="transferAmt" className="text-xs font-semibold">Amount (৳) *</Label>
+                    <Input
+                      id="transferAmt"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0.00"
+                      className="mt-1 bg-background"
+                      value={transferData.amount}
+                      onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Additional Row: Date, Notes & Submit */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end pt-1">
+                  <div>
+                    <Label htmlFor="transferDate" className="text-xs font-semibold">Date</Label>
+                    <Input
+                      id="transferDate"
+                      type="date"
+                      className="mt-1 bg-background"
+                      value={transferData.date}
+                      onChange={(e) => setTransferData({ ...transferData, date: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Label htmlFor="transferNotes" className="text-xs font-semibold">Notes / Purpose (Optional)</Label>
+                    <Input
+                      id="transferNotes"
+                      placeholder="e.g. ATM withdrawal, Bank to bKash add money"
+                      className="mt-1 bg-background"
+                      value={transferData.notes}
+                      onChange={(e) => setTransferData({ ...transferData, notes: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <Button
+                      type="submit"
+                      disabled={transferSubmitting || !transferData.fromAccountId || !transferData.toAccountId || !transferData.amount}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+                    >
+                      <ArrowLeftRight className="mr-2 h-4 w-4" />
+                      {transferSubmitting ? 'Transferring...' : 'Transfer Now'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Projected Balance Preview Box */}
+                {(() => {
+                  const fromAcc = accounts.find(a => a.id === transferData.fromAccountId);
+                  const toAcc = accounts.find(a => a.id === transferData.toAccountId);
+                  const amt = parseFloat(transferData.amount) || 0;
+
+                  if (!fromAcc && !toAcc) return null;
+
+                  const fromOld = fromAcc?.currentBalance ?? fromAcc?.balance ?? 0;
+                  const fromNew = fromOld - amt;
+                  const toOld = toAcc?.currentBalance ?? toAcc?.balance ?? 0;
+                  const toNew = toOld + amt;
+
+                  return (
+                    <div className="mt-3 p-3 bg-muted/50 rounded-lg border text-xs flex flex-wrap items-center justify-between gap-4">
+                      {fromAcc && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Source:</span>
+                          <span className="font-semibold">{fromAcc.name}</span>
+                          <span className="text-muted-foreground">({formatCurrency(fromOld)})</span>
+                          {amt > 0 && (
+                            <>
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                              <span className={`font-bold ${fromNew >= 0 ? 'text-foreground' : 'text-rose-600'}`}>
+                                {formatCurrency(fromNew)}
+                              </span>
+                              <span className="text-rose-600 font-mono">(-{formatCurrency(amt)})</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {toAcc && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Destination:</span>
+                          <span className="font-semibold">{toAcc.name}</span>
+                          <span className="text-muted-foreground">({formatCurrency(toOld)})</span>
+                          {amt > 0 && (
+                            <>
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                              <span className="font-bold text-emerald-600">
+                                {formatCurrency(toNew)}
+                              </span>
+                              <span className="text-emerald-600 font-mono">(+{formatCurrency(amt)})</span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <div className="text-muted-foreground italic">
+                        Total Balance: <span className="font-medium text-foreground">Intact (৳0 change)</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </form>
+            </CardContent>
+          </Card>
+
           {/* Add Account Card */}
           <Card>
             <CardHeader>
@@ -757,6 +1044,16 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                           </>
                         ) : (
                           <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs font-medium border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                              onClick={() => handleQuickTransferFrom(acc.id)}
+                              title="Transfer money from this account"
+                            >
+                              <ArrowLeftRight className="h-3.5 w-3.5 mr-1" />
+                              Transfer
+                            </Button>
                             <Button size="sm" variant="ghost" onClick={() => handleEditAccount(acc)}>
                               <Edit2 className="h-4 w-4" />
                             </Button>

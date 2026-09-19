@@ -12496,6 +12496,51 @@
       "date": "2026-09-18T23:04:03+06:00",
       "created_at": "2026-09-18T17:02:45.140Z",
       "updated_at": "2026-09-18T17:04:03.313Z"
+    },
+    {
+      "id": "02ee2d96-5f52-4ca9-86e3-59e855e77f39",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "voucher_id": "2026-09-19-0001",
+      "title": "Spotify",
+      "description": null,
+      "amount": 251.85,
+      "type": "expense",
+      "category_id": "cat-1761229077916",
+      "financial_user_id": "user-1759407916224",
+      "account_id": "7abfee86-d05c-4dc7-9701-b1f937f5dfb0",
+      "date": "2026-09-19T21:19:37+06:00",
+      "created_at": "2026-09-19T15:19:37.119Z",
+      "updated_at": "2026-09-19T15:19:37.119Z"
+    },
+    {
+      "id": "573879a5-e147-4708-98ef-2bb0398fd2b3",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "voucher_id": "2026-09-19-0002",
+      "title": "Expense ",
+      "description": null,
+      "amount": 180,
+      "type": "expense",
+      "category_id": "cat-1759505689289",
+      "financial_user_id": "user-1759407916224",
+      "account_id": "7a0f32a3-4ead-409f-abd9-610696f3dee3",
+      "date": "2026-09-19T21:20:20+06:00",
+      "created_at": "2026-09-19T15:20:20.864Z",
+      "updated_at": "2026-09-19T15:20:20.864Z"
+    },
+    {
+      "id": "10908d5a-4b45-42d1-b861-9823edab1a0e",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "voucher_id": "2026-09-19-0003",
+      "title": "Food",
+      "description": null,
+      "amount": 80,
+      "type": "expense",
+      "category_id": "cat-1759410282030",
+      "financial_user_id": "user-1759407916224",
+      "account_id": "7a0f32a3-4ead-409f-abd9-610696f3dee3",
+      "date": "2026-09-19T21:20:51+06:00",
+      "created_at": "2026-09-19T15:20:51.628Z",
+      "updated_at": "2026-09-19T15:20:51.628Z"
     }
   ],
   "categories": [
@@ -12713,6 +12758,33 @@
       "icon": "hand-coins",
       "created_at": "2026-09-18T17:02:39.845Z",
       "updated_at": "2026-09-18T17:02:39.845Z"
+    },
+    {
+      "id": "2244fd1c-b363-4904-b58a-f924792fbcec",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "name": "Transfer",
+      "color": "#6366F1",
+      "icon": "arrow-left-right",
+      "created_at": "2026-09-19T15:34:34.297Z",
+      "updated_at": "2026-09-19T15:34:34.297Z"
+    },
+    {
+      "id": "561ee81a-722d-470a-9a3c-26efef689d1a",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "name": "Loan",
+      "color": "#8B5CF6",
+      "icon": "landmark",
+      "created_at": "2026-09-19T15:35:01.800Z",
+      "updated_at": "2026-09-19T15:35:01.800Z"
+    },
+    {
+      "id": "8d63664d-a66a-42b7-9637-309c9b1fde8b",
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "name": "Loan Forgiven",
+      "color": "#EF4444",
+      "icon": "heart-handshake",
+      "created_at": "2026-09-19T15:35:01.847Z",
+      "updated_at": "2026-09-19T15:35:01.847Z"
     }
   ],
   "settings": [
@@ -13379,6 +13451,11 @@
       "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
       "date_key": "2026-09-18",
       "counter": 5
+    },
+    {
+      "user_id": "3ad74670-6c66-49b8-94c2-16a64c42ce59",
+      "date_key": "2026-09-19",
+      "counter": 4
     }
   ],
   "accounts": [

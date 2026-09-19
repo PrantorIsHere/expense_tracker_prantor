@@ -72,9 +72,9 @@ router.post('/', authenticateToken, (req, res) => {
     if (record_transaction && account_id) {
       const voucherId = generateNextVoucherId(userId, date);
 
-      // Loan given = you gave out money -> expense
-      // Loan taken = you received borrowed money -> income
-      const txType = type === 'given' ? 'expense' : 'income';
+      // Loan given = you gave out money -> loan_given
+      // Loan taken = you received borrowed money -> loan_taken
+      const txType = type === 'given' ? 'loan_given' : 'loan_taken';
       const txTitle = type === 'given' 
         ? `Loan Given to ${person}` 
         : `Loan Taken from ${person}`;
@@ -116,6 +116,10 @@ router.post('/', authenticateToken, (req, res) => {
         updated_at:        now,
       };
       db.get('transactions').push(createdTx).write();
+
+      // Store transaction_id on the loan
+      newLoan.transaction_id = createdTx.id;
+      db.get('loans').find({ id: newLoan.id }).assign({ transaction_id: createdTx.id }).write();
     }
 
     res.status(201).json({ ...newLoan, transaction: createdTx });
@@ -222,6 +226,119 @@ router.post('/:id/repay', authenticateToken, (req, res) => {
   } catch (e) {
     console.error('repay loan error', e);
     res.status(500).json({ error: 'Failed to record loan repayment' });
+  }
+});
+
+// POST /api/loans/:id/forgive — forgive/walk over loan, remove from active loans & convert to permanent expense
+router.post('/:id/forgive', authenticateToken, (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const loan = db.get('loans').find({ id, user_id: userId }).value();
+    if (!loan) return res.status(404).json({ error: 'Loan not found' });
+
+    if (loan.status === 'forgiven' || loan.status === 'paid') {
+      return res.status(400).json({ error: `Loan is already marked as ${loan.status}` });
+    }
+
+    const { category_id, date, notes } = req.body;
+    const now = new Date().toISOString();
+    const forgiveDate = date || now;
+
+    // Remaining unpaid amount to forgive
+    const previousRepaid = parseFloat(loan.repaid_amount) || 0;
+    const remainingAmount = Math.max(0, parseFloat(loan.amount) - previousRepaid);
+    if (remainingAmount <= 0) {
+      return res.status(400).json({ error: 'Loan has no remaining balance to forgive' });
+    }
+
+    // 1. Find or create 'Loan Forgiven' category
+    let category = null;
+    if (category_id) {
+      category = db.get('categories').find({ id: category_id }).value();
+    }
+    if (!category) {
+      category = db.get('categories')
+        .find(c => (c.user_id === userId || c.user_id === null) && (c.name.toLowerCase() === 'loan forgiven' || c.name.toLowerCase() === 'bad debt'))
+        .value();
+    }
+    if (!category) {
+      category = {
+        id: uuidv4(),
+        user_id: userId,
+        name: 'Loan Forgiven',
+        color: '#EF4444',
+        icon: 'heart-handshake',
+        created_at: now,
+        updated_at: now,
+      };
+      db.get('categories').push(category).write();
+    }
+
+    const personName = loan.person || 'Contact';
+
+    // 2. Check if a transaction for this loan already exists
+    const existingTx = db.get('transactions')
+      .find(t => t.user_id === userId && (t.id === loan.transaction_id || t.id === loan.transactionId || t.id === loan.id))
+      .value();
+
+    let txRecord = null;
+    if (existingTx) {
+      // Convert existing loan transaction into a permanent expense under Loan Forgiven
+      const updatedTx = {
+        ...existingTx,
+        title:       `Loan Forgiven - ${personName}`,
+        type:        'expense',
+        category_id: category.id,
+        description: notes || (existingTx.description ? `${existingTx.description} (Forgiven / Walked Over)` : 'Loan forgiven / walked over'),
+        updated_at:  now,
+      };
+      db.get('transactions').find({ id: existingTx.id }).assign(updatedTx).write();
+      txRecord = updatedTx;
+    } else {
+      // If no previous transaction exists, create an expense transaction
+      const voucherId = generateNextVoucherId(userId, forgiveDate);
+      let finUser = db.get('financial_users')
+        .find(u => u.user_id === userId && (u.id === loan.userId || (u.name && u.name.toLowerCase() === personName.toLowerCase())))
+        .value();
+
+      txRecord = {
+        id:                uuidv4(),
+        user_id:           userId,
+        voucher_id:        voucherId,
+        title:             `Loan Forgiven - ${personName}`,
+        description:       notes || 'Loan forgiven / walked over',
+        amount:            remainingAmount,
+        type:              'expense',
+        category_id:       category.id,
+        financial_user_id: finUser ? finUser.id : (loan.userId || null),
+        account_id:        loan.account_id || null,
+        date:              forgiveDate,
+        created_at:        now,
+        updated_at:        now,
+      };
+      db.get('transactions').push(txRecord).write();
+    }
+
+    // 3. Update loan status to 'forgiven'
+    const updatedLoan = {
+      ...loan,
+      status:          'forgiven',
+      forgiven_amount: remainingAmount,
+      forgiven_date:   forgiveDate,
+      updated_at:      now,
+    };
+    db.get('loans').find({ id, user_id: userId }).assign(updatedLoan).write();
+
+    res.json({
+      success: true,
+      loan: updatedLoan,
+      transaction: txRecord,
+      message: `Loan to ${personName} has been forgiven and recorded as a permanent expense.`
+    });
+  } catch (e) {
+    console.error('forgive loan error', e);
+    res.status(500).json({ error: 'Failed to forgive loan' });
   }
 });
 

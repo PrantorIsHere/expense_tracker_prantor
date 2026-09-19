@@ -37,6 +37,7 @@ import {
   Building2,
   Smartphone,
   CreditCard,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 export default function Index() {
@@ -432,6 +433,15 @@ export default function Index() {
                       <p className="text-lg font-bold text-primary">{formatCurrency(totalAccountFunds)}</p>
                     </div>
                     <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={() => setActiveTab('settings')}
+                      className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      <ArrowLeftRight className="h-3 w-3 mr-1" />
+                      Transfer Funds
+                    </Button>
+                    <Button 
                       variant="outline" 
                       size="sm" 
                       onClick={() => setActiveTab('settings')}
@@ -671,21 +681,41 @@ export default function Index() {
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-3 h-3 rounded-full ${
-                              transaction.type === 'income' ? 'bg-green-500 pulse-subtle' : 'bg-red-500 pulse-subtle'
+                              transaction.type === 'income' ? 'bg-green-500 pulse-subtle' :
+                              transaction.type === 'transfer' ? 'bg-indigo-500 pulse-subtle' :
+                              transaction.type === 'loan_given' ? 'bg-amber-500 pulse-subtle' :
+                              transaction.type === 'loan_taken' ? 'bg-blue-500 pulse-subtle' :
+                              'bg-red-500 pulse-subtle'
                             }`} />
                             <div>
                               <p className="font-semibold text-foreground">{transaction.title}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {users.find(u => u.id === transaction.userId)?.name || 'Unknown'} • {categories.find(c => c.id === transaction.categoryId)?.name || 'Uncategorized'}
-                                {transaction.accountName ? ` • ${transaction.accountName}` : ''}
-                              </p>
+                              {transaction.type === 'transfer' ? (
+                                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                  <span>Transfer:</span>
+                                  <span className="font-medium text-foreground">{transaction.accountName || 'Account'}</span>
+                                  <span>→</span>
+                                  <span className="font-medium text-foreground">{transaction.toAccountName || 'Account'}</span>
+                                </p>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  {users.find(u => u.id === transaction.userId)?.name || 'Unknown'} • {categories.find(c => c.id === transaction.categoryId)?.name || 'Uncategorized'}
+                                  {transaction.accountName ? ` • ${transaction.accountName}` : ''}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div className="text-right">
                             <p className={`font-bold text-lg ${
-                              transaction.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                              transaction.type === 'income' ? 'text-green-600 dark:text-green-400' :
+                              transaction.type === 'transfer' ? 'text-indigo-600 dark:text-indigo-400' :
+                              transaction.type === 'loan_given' ? 'text-amber-600 dark:text-amber-400' :
+                              transaction.type === 'loan_taken' ? 'text-blue-600 dark:text-blue-400' :
+                              'text-red-600 dark:text-red-400'
                             }`}>
-                              {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                              {transaction.type === 'income' ? '+' :
+                               transaction.type === 'transfer' ? '⇄ ' :
+                               transaction.type === 'loan_taken' ? '+' :
+                               '-'}{formatCurrency(transaction.amount)}
                             </p>
                             <p className="text-sm text-muted-foreground">
                               {new Date(transaction.date).toLocaleDateString()}

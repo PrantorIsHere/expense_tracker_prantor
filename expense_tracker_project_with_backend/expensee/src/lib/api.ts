@@ -7,10 +7,11 @@ type TransactionPayload = {
   title: string;
   description?: string;
   amount: number;
-  type: 'income' | 'expense' | 'loan_given' | 'loan_taken';
+  type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'transfer';
   category_id?: string | null;
   financial_user_id?: string | null;
   account_id?: string | null;
+  to_account_id?: string | null;
   date: string;
 };
 
@@ -190,6 +191,15 @@ class ApiClient {
   async deleteAccount(id: string) {
     return this.request(`/accounts/${id}`, { method: 'DELETE' });
   }
+  async transferFunds(payload: {
+    from_account_id: string;
+    to_account_id: string;
+    amount: number;
+    date?: string;
+    notes?: string;
+  }) {
+    return this.request('/accounts/transfer', { method: 'POST', body: JSON.stringify(payload) });
+  }
 
   // ── Loans ─────────────────────────────────────────────────────────────────
 
@@ -202,6 +212,9 @@ class ApiClient {
   }
   async repayLoan(id: string, payload: { account_id: string; amount?: number; date?: string; notes?: string }) {
     return this.request(`/loans/${id}/repay`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+  async forgiveLoan(id: string, payload: { category_id?: string; date?: string; notes?: string }) {
+    return this.request(`/loans/${id}/forgive`, { method: 'POST', body: JSON.stringify(payload) });
   }
   async deleteLoan(id: string) {
     return this.request(`/loans/${id}`, { method: 'DELETE' });

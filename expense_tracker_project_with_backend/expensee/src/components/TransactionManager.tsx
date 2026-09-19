@@ -21,7 +21,7 @@ import {
   getStoredDateInputValue
 } from '@/lib/dhakaTime';
 import { Transaction, User, Category, Account } from '@/components/types';
-import { Plus, Edit, Trash2, Download, Search, Filter, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2, Download, Search, Filter, ChevronLeft, ChevronRight, FileText, ArrowLeftRight, ArrowRight } from 'lucide-react';
 
 interface TransactionManagerProps {
   onDataChange: () => void;
@@ -96,8 +96,10 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     categoryId:  String(t.category_id ?? t.categoryId ?? ''),
     accountId:   String(t.account_id ?? t.accountId ?? ''),
     accountName: t.account_name ? String(t.account_name) : undefined,
-    accountType: t.account_type ? String(t.account_type) : undefined,
-    userId:      String(t.financial_user_id ?? t.userId ?? ''),
+    accountType:   t.account_type ? String(t.account_type) : undefined,
+    toAccountId:   t.to_account_id || t.toAccountId ? String(t.to_account_id ?? t.toAccountId) : undefined,
+    toAccountName: t.to_account_name ? String(t.to_account_name) : undefined,
+    userId:        String(t.financial_user_id ?? t.userId ?? ''),
     date:        String(t.date ?? ''),
     createdAt:   String(t.created_at ?? t.createdAt ?? ''),
     updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
@@ -585,6 +587,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="income">Income</SelectItem>
                   <SelectItem value="expense">Expense</SelectItem>
+                  <SelectItem value="transfer">Account Transfer</SelectItem>
                   <SelectItem value="loan_given">Loan Given</SelectItem>
                   <SelectItem value="loan_taken">Loan Taken</SelectItem>
                 </SelectContent>
@@ -720,13 +723,37 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={
-                              transaction.type === 'income' ? 'default' : 
-                              transaction.type === 'expense' ? 'destructive' : 
-                              'secondary'
-                            }>
-                              {transaction.type.replace('_', ' ').toUpperCase()}
-                            </Badge>
+                            {transaction.type === 'income' && (
+                              <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                                INCOME
+                              </Badge>
+                            )}
+                            {transaction.type === 'expense' && (
+                              <Badge variant="destructive" className="font-semibold">
+                                EXPENSE
+                              </Badge>
+                            )}
+                            {transaction.type === 'loan_given' && (
+                              <Badge className="bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 font-semibold">
+                                LOAN GIVEN
+                              </Badge>
+                            )}
+                            {transaction.type === 'loan_taken' && (
+                              <Badge className="bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700 font-semibold">
+                                LOAN TAKEN
+                              </Badge>
+                            )}
+                            {transaction.type === 'transfer' && (
+                              <Badge className="bg-indigo-100 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 font-semibold flex items-center gap-1">
+                                <ArrowLeftRight className="h-3 w-3" />
+                                TRANSFER
+                              </Badge>
+                            )}
+                            {!['income', 'expense', 'loan_given', 'loan_taken', 'transfer'].includes(transaction.type) && (
+                              <Badge variant="secondary">
+                                {transaction.type}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             {category ? (
@@ -742,7 +769,15 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                             )}
                           </TableCell>
                           <TableCell>
-                            {account ? (
+                            {transaction.type === 'transfer' ? (
+                              <div className="flex items-center gap-1 text-xs font-medium">
+                                <span className="text-foreground">{account?.name || transaction.accountName || 'Account'}</span>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                                <span className="text-foreground">
+                                  {accounts.find(a => a.id === transaction.toAccountId)?.name || transaction.toAccountName || 'Account'}
+                                </span>
+                              </div>
+                            ) : account ? (
                               <Badge variant="outline" className="font-normal text-xs">
                                 {account.name}
                               </Badge>
@@ -756,11 +791,19 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                           </TableCell>
                           <TableCell>{user?.name || 'Unknown'}</TableCell>
                           <TableCell className={
-                            transaction.type === 'income' ? 'text-green-600 font-medium' : 
-                            transaction.type === 'expense' ? 'text-red-600 font-medium' : 
+                            transaction.type === 'income' ? 'text-green-600 font-semibold' : 
+                            transaction.type === 'expense' ? 'text-red-600 font-semibold' : 
+                            transaction.type === 'loan_given' ? 'text-amber-600 dark:text-amber-400 font-semibold' :
+                            transaction.type === 'loan_taken' ? 'text-blue-600 dark:text-blue-400 font-semibold' :
+                            transaction.type === 'transfer' ? 'text-indigo-600 dark:text-indigo-400 font-semibold' :
                             'font-medium'
                           }>
-                            {formatCurrency(transaction.amount)}
+                            {transaction.type === 'income' ? `+${formatCurrency(transaction.amount)}` :
+                             transaction.type === 'expense' ? `-${formatCurrency(transaction.amount)}` :
+                             transaction.type === 'loan_given' ? `-${formatCurrency(transaction.amount)}` :
+                             transaction.type === 'loan_taken' ? `+${formatCurrency(transaction.amount)}` :
+                             transaction.type === 'transfer' ? `⇄ ${formatCurrency(transaction.amount)}` :
+                             formatCurrency(transaction.amount)}
                           </TableCell>
                           <TableCell>
                             <div className="flex space-x-2">
