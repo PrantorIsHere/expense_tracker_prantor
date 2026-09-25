@@ -1,0 +1,29 @@
+{
+  "users": [],
+  "transactions": [],
+  "categories": [
+    { "id": "cat-1",  "name": "Food & Dining",    "color": "#FF6B6B", "icon": "🍔", "user_id": null },
+    { "id": "cat-2",  "name": "Transport",         "color": "#4ECDC4", "icon": "🚗", "user_id": null },
+    { "id": "cat-3",  "name": "Shopping",          "color": "#45B7D1", "icon": "🛍️", "user_id": null },
+    { "id": "cat-4",  "name": "Entertainment",     "color": "#96CEB4", "icon": "🎬", "user_id": null },
+    { "id": "cat-5",  "name": "Health & Medical",  "color": "#FFEAA7", "icon": "💊", "user_id": null },
+    { "id": "cat-6",  "name": "Bills & Utilities", "color": "#DDA0DD", "icon": "💡", "user_id": null },
+    { "id": "cat-7",  "name": "Salary",            "color": "#90EE90", "icon": "💰", "user_id": null },
+    { "id": "cat-8",  "name": "Business",          "color": "#FFB347", "icon": "💼", "user_id": null },
+    { "id": "cat-9",  "name": "Education",         "color": "#87CEEB", "icon": "📚", "user_id": null },
+    { "id": "cat-10", "name": "Other",             "color": "#D3D3D3", "icon": "📦", "user_id": null },
+    { "id": "cat-11", "name": "Transfer",          "color": "#6366F1", "icon": "ArrowLeftRight", "user_id": null },
+    { "id": "cat-12", "name": "Loan",              "color": "#8B5CF6", "icon": "landmark", "user_id": null },
+    { "id": "cat-13", "name": "Loan Repayment",    "color": "#10B981", "icon": "receipt", "user_id": null },
+    { "id": "cat-14", "name": "Loan Forgiven / Bad Debt", "color": "#EF4444", "icon": "shield-alert", "user_id": null }
+  ],
+  "settings": [],
+  "loans": [],
+  "goals": [],
+  "financial_users": [],
+  "accounts": [],
+  "transaction_history": [],
+  "rent_history": [],
+  "gadget_warranties": [],
+  "voucher_counters": []
+}

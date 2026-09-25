@@ -1,0 +1,33 @@
+# ==========================================
+# Personal Database (NEVER upload to GitHub)
+# ==========================================
+db/data.json
+db/data.backup.json
+db/*.backup.json
+db/*.backup.*
+db/*.sqlite
+db/*.db
+
+# Allow database template & metadata
+!db/data.example.json
+!db/.gitkeep
+!db/README.md
+
+# ==========================================
+# Environment & Local Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ==========================================
+# Dependencies & Logs
+# ==========================================
+node_modules/
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

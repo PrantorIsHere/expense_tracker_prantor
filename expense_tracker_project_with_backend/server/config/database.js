@@ -10,6 +10,17 @@ if (!fs.existsSync(dbDir)) {
 }
 
 const dbPath = path.join(dbDir, 'data.json');
+const exampleDbPath = path.join(dbDir, 'data.example.json');
+
+// If personal data.json doesn't exist yet (e.g. fresh clone), seed it from data.example.json
+if (!fs.existsSync(dbPath) && fs.existsSync(exampleDbPath)) {
+  try {
+    fs.copyFileSync(exampleDbPath, dbPath);
+    console.log('Initialized new personal database from data.example.json');
+  } catch (err) {
+    console.warn('Could not copy data.example.json, falling back to defaults:', err.message);
+  }
+}
 
 const adapter = new FileSync(dbPath);
 const db = low(adapter);
@@ -29,6 +40,10 @@ db.defaults({
     { id: 'cat-8',  name: 'Business',          color: '#FFB347', icon: '💼', user_id: null },
     { id: 'cat-9',  name: 'Education',         color: '#87CEEB', icon: '📚', user_id: null },
     { id: 'cat-10', name: 'Other',             color: '#D3D3D3', icon: '📦', user_id: null },
+    { id: 'cat-11', name: 'Transfer',          color: '#6366F1', icon: 'ArrowLeftRight', user_id: null },
+    { id: 'cat-12', name: 'Loan',              color: '#8B5CF6', icon: 'landmark', user_id: null },
+    { id: 'cat-13', name: 'Loan Repayment',    color: '#10B981', icon: 'receipt', user_id: null },
+    { id: 'cat-14', name: 'Loan Forgiven / Bad Debt', color: '#EF4444', icon: 'shield-alert', user_id: null }
   ],
   // --- User settings (one row per user) ---
   settings: [],

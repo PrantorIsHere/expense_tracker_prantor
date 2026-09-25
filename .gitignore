@@ -1,0 +1,63 @@
+# ========================================================
+# Personal Database Files (NEVER upload to GitHub)
+# ========================================================
+**/server/db/data.json
+**/server/db/data.backup.json
+**/server/db/*.backup.json
+**/server/db/*.backup.*
+**/server/db/*.sqlite
+**/server/db/*.db
+*.sqlite
+*.db
+
+# Allow database template, README, and gitkeep
+!**/server/db/data.example.json
+!**/server/db/.gitkeep
+!**/server/db/README.md
+
+# ========================================================
+# Environment Variables & Secrets
+# ========================================================
+.env
+.env.local
+.env.*.local
+**/server/.env
+**/expensee/.env.local
+!**/.env.example
+
+# ========================================================
+# Dependencies
+# ========================================================
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ========================================================
+# Build Outputs
+# ========================================================
+**/dist/
+**/dist-ssr/
+**/build/
+
+# ========================================================
+# Editor & OS Files
+# ========================================================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ========================================================
+# Logs
+# ========================================================
+logs/
+*.log
