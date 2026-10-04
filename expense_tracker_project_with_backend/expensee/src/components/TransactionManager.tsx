@@ -99,6 +99,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     accountType:   t.account_type ? String(t.account_type) : undefined,
     toAccountId:   t.to_account_id || t.toAccountId ? String(t.to_account_id ?? t.toAccountId) : undefined,
     toAccountName: t.to_account_name ? String(t.to_account_name) : undefined,
+    loanId:        t.loan_id ? String(t.loan_id) : (t.loanId ? String(t.loanId) : undefined),
     userId:        String(t.financial_user_id ?? t.userId ?? ''),
     date:        String(t.date ?? ''),
     createdAt:   String(t.created_at ?? t.createdAt ?? ''),
@@ -590,6 +591,8 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                   <SelectItem value="transfer">Account Transfer</SelectItem>
                   <SelectItem value="loan_given">Loan Given</SelectItem>
                   <SelectItem value="loan_taken">Loan Taken</SelectItem>
+                  <SelectItem value="loan_received">Loan Repaid to You (Cash In)</SelectItem>
+                  <SelectItem value="loan_repaid">Loan Repaid by You (Cash Out)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -743,13 +746,23 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                                 LOAN TAKEN
                               </Badge>
                             )}
+                            {transaction.type === 'loan_received' && (
+                              <Badge className="bg-teal-100 dark:bg-teal-950/50 text-teal-800 dark:text-teal-300 border-teal-300 dark:border-teal-700 font-semibold">
+                                LOAN REPAID TO YOU
+                              </Badge>
+                            )}
+                            {transaction.type === 'loan_repaid' && (
+                              <Badge className="bg-orange-100 dark:bg-orange-950/50 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-700 font-semibold">
+                                LOAN REPAID BY YOU
+                              </Badge>
+                            )}
                             {transaction.type === 'transfer' && (
                               <Badge className="bg-indigo-100 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700 font-semibold flex items-center gap-1">
                                 <ArrowLeftRight className="h-3 w-3" />
                                 TRANSFER
                               </Badge>
                             )}
-                            {!['income', 'expense', 'loan_given', 'loan_taken', 'transfer'].includes(transaction.type) && (
+                            {!['income', 'expense', 'loan_given', 'loan_taken', 'loan_received', 'loan_repaid', 'transfer'].includes(transaction.type) && (
                               <Badge variant="secondary">
                                 {transaction.type}
                               </Badge>
@@ -795,6 +808,8 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                             transaction.type === 'expense' ? 'text-red-600 font-semibold' : 
                             transaction.type === 'loan_given' ? 'text-amber-600 dark:text-amber-400 font-semibold' :
                             transaction.type === 'loan_taken' ? 'text-blue-600 dark:text-blue-400 font-semibold' :
+                            transaction.type === 'loan_received' ? 'text-teal-600 dark:text-teal-400 font-semibold' :
+                            transaction.type === 'loan_repaid' ? 'text-orange-600 dark:text-orange-400 font-semibold' :
                             transaction.type === 'transfer' ? 'text-indigo-600 dark:text-indigo-400 font-semibold' :
                             'font-medium'
                           }>
@@ -802,6 +817,8 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                              transaction.type === 'expense' ? `-${formatCurrency(transaction.amount)}` :
                              transaction.type === 'loan_given' ? `-${formatCurrency(transaction.amount)}` :
                              transaction.type === 'loan_taken' ? `+${formatCurrency(transaction.amount)}` :
+                             transaction.type === 'loan_received' ? `+${formatCurrency(transaction.amount)}` :
+                             transaction.type === 'loan_repaid' ? `-${formatCurrency(transaction.amount)}` :
                              transaction.type === 'transfer' ? `⇄ ${formatCurrency(transaction.amount)}` :
                              formatCurrency(transaction.amount)}
                           </TableCell>

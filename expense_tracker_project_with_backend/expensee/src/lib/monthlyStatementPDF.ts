@@ -148,9 +148,12 @@ export const generateMonthlyStatementPDF = (
   pdf.setFont('helvetica', 'normal');
   pdf.text(formatDateDhaka(new Date()), 140, boxY + 14);
 
-  // Calculate totals
-  const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const expenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  // Calculate totals (including loan cash movements)
+  const isCashIn = (type: string) => type === 'income' || type === 'loan_taken' || type === 'loan_received';
+  const isCashOut = (type: string) => type === 'expense' || type === 'loan_given' || type === 'loan_repaid';
+
+  const income = transactions.filter(t => isCashIn(t.type)).reduce((sum, t) => sum + t.amount, 0);
+  const expenses = transactions.filter(t => isCashOut(t.type)).reduce((sum, t) => sum + t.amount, 0);
   const netBalance = income - expenses;
 
   // Summary Section
@@ -169,12 +172,12 @@ export const generateMonthlyStatementPDF = (
   const col2X = 80;
   const col3X = 135;
   
-  pdf.text('Total Income:', col1X, summaryY + 8);
+  pdf.text('Total Inflow / Income:', col1X, summaryY + 8);
   pdf.setTextColor(0, 128, 0);
   pdf.text(formatAmount(income), col1X, summaryY + 16);
   
   pdf.setTextColor(textDark[0], textDark[1], textDark[2]);
-  pdf.text('Total Expenses:', col2X, summaryY + 8);
+  pdf.text('Total Outflow / Expense:', col2X, summaryY + 8);
   pdf.setTextColor(255, 0, 0);
   pdf.text(formatAmount(expenses), col2X, summaryY + 16);
   
@@ -193,6 +196,15 @@ export const generateMonthlyStatementPDF = (
       const user = users.find(u => u.id === t.userId);
       const category = categories.find(c => c.id === t.categoryId);
       const transDate = new Date(t.date);
+
+      const typeLabel =
+        t.type === 'income' ? 'INCOME' :
+        t.type === 'expense' ? 'EXPENSE' :
+        t.type === 'loan_given' ? 'LOAN GIVEN' :
+        t.type === 'loan_taken' ? 'LOAN TAKEN' :
+        t.type === 'loan_received' ? 'LOAN REPAID' :
+        t.type === 'loan_repaid' ? 'LOAN REPAID' :
+        t.type === 'transfer' ? 'TRANSFER' : String(t.type).toUpperCase();
       
       return [
         formatDateDhaka(transDate),
@@ -200,9 +212,9 @@ export const generateMonthlyStatementPDF = (
         t.title,
         category?.name || 'N/A',
         user?.name || 'N/A',
-        t.type === 'income' ? formatAmount(t.amount) : '-',
-        t.type === 'expense' ? formatAmount(t.amount) : '-',
-        t.type === 'income' ? 'INCOME' : 'EXPENSE'
+        isCashIn(t.type) ? formatAmount(t.amount) : '-',
+        isCashOut(t.type) ? formatAmount(t.amount) : '-',
+        typeLabel
       ];
     });
 

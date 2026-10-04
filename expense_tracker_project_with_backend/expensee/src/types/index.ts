@@ -37,7 +37,7 @@ export interface Transaction {
   title: string;
   description?: string;
   amount: number;
-  type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'transfer';
+  type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'loan_received' | 'loan_repaid' | 'transfer';
   categoryId: string;
   userId: string;
   accountId?: string;
@@ -45,6 +45,7 @@ export interface Transaction {
   accountType?: string;
   toAccountId?: string;
   toAccountName?: string;
+  loanId?: string;
   date: string;
   createdAt: string;
   updatedAt: string;
@@ -52,16 +53,33 @@ export interface Transaction {
 
 export interface Loan {
   id: string;
-  transactionId: string;
-  userId: string;
+  transactionId?: string;
+  transaction_id?: string;
+  userId?: string;
+  user_id?: string;
+  person?: string;
   amount: number;
   type: 'given' | 'taken';
   status: 'pending' | 'repaid' | 'paid' | 'partial' | 'forgiven';
   dueDate?: string;
+  due_date?: string;
   repaidDate?: string;
+  repaid_date?: string;
+  repaidAmount?: number;
+  repaid_amount?: number;
+  accountId?: string;
+  account_id?: string;
+  repaidAccountId?: string;
+  repaid_account_id?: string;
   forgivenDate?: string;
+  forgiven_date?: string;
   forgivenAmount?: number;
+  forgiven_amount?: number;
+  description?: string;
   createdAt: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 export interface Goal {

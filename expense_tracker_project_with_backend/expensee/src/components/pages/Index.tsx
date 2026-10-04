@@ -39,6 +39,7 @@ import {
   CreditCard,
   ArrowLeftRight,
 } from 'lucide-react';
+import { summarize, loanSummary, txMeta } from '@/lib/finance';
 
 export default function Index() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -68,20 +69,23 @@ export default function Index() {
 
     // Map transactions: server snake_case → frontend camelCase (with fallback for old local storage data)
     const txns = (txnsRaw as Record<string, unknown>[]).map(t => ({
-      id:          String(t.id ?? ''),
-      voucherId:   String(t.voucher_id ?? t.voucherId ?? ''),
-      title:       String(t.title ?? ''),
-      description: t.description ? String(t.description) : undefined,
-      amount:      Number(t.amount ?? 0),
-      type:        t.type as Transaction['type'],
-      categoryId:  String(t.category_id ?? t.categoryId ?? ''),
-      accountId:   t.account_id ? String(t.account_id) : undefined,
-      accountName: t.account_name ? String(t.account_name) : undefined,
-      accountType: t.account_type ? String(t.account_type) : undefined,
-      userId:      String(t.financial_user_id ?? t.userId ?? ''),
-      date:        String(t.date ?? ''),
-      createdAt:   String(t.created_at ?? t.createdAt ?? ''),
-      updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
+      id:            String(t.id ?? ''),
+      voucherId:     String(t.voucher_id ?? t.voucherId ?? ''),
+      title:         String(t.title ?? ''),
+      description:   t.description ? String(t.description) : undefined,
+      amount:        Number(t.amount ?? 0),
+      type:          t.type as Transaction['type'],
+      categoryId:    String(t.category_id ?? t.categoryId ?? ''),
+      accountId:     t.account_id ? String(t.account_id) : undefined,
+      accountName:   t.account_name ? String(t.account_name) : undefined,
+      accountType:   t.account_type ? String(t.account_type) : undefined,
+      toAccountId:   t.to_account_id ? String(t.to_account_id) : (t.toAccountId ? String(t.toAccountId) : undefined),
+      toAccountName: t.to_account_name ? String(t.to_account_name) : (t.toAccountName ? String(t.toAccountName) : undefined),
+      loanId:        t.loan_id ? String(t.loan_id) : (t.loanId ? String(t.loanId) : undefined),
+      userId:        String(t.financial_user_id ?? t.userId ?? ''),
+      date:          String(t.date ?? ''),
+      createdAt:     String(t.created_at ?? t.createdAt ?? ''),
+      updatedAt:     String(t.updated_at ?? t.updatedAt ?? ''),
     }));
 
     // Map goals: server snake_case → frontend camelCase
@@ -100,16 +104,18 @@ export default function Index() {
 
     // Map loans: server snake_case → frontend camelCase
     const lns = (lnsRaw as Record<string, unknown>[]).map(l => ({
-      id:            String(l.id ?? ''),
-      transactionId: '',
-      userId:        String(l.user_id ?? l.userId ?? ''),
-      amount:        Number(l.amount ?? 0),
-      type:          l.type as Loan['type'],
-      status:        l.status === 'paid' ? 'pending' : (l.status as Loan['status']) || 'pending',
-      // For dashboard pending loan calc: treat 'pending' as pending, 'paid'/'partial' as repaid
-      _serverStatus: String(l.status ?? 'pending'),
-      dueDate:       l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
-      createdAt:     String(l.created_at ?? l.createdAt ?? ''),
+      id:             String(l.id ?? ''),
+      transactionId:  String(l.transaction_id ?? l.transactionId ?? ''),
+      userId:         String(l.user_id ?? l.userId ?? ''),
+      person:         l.person ? String(l.person) : undefined,
+      amount:         Number(l.amount ?? 0),
+      type:           l.type as Loan['type'],
+      status:         String(l.status ?? 'pending') as Loan['status'],
+      repaidAmount:   Number(l.repaid_amount ?? l.repaidAmount ?? 0),
+      repaid_amount:  Number(l.repaid_amount ?? l.repaidAmount ?? 0),
+      forgivenAmount: Number(l.forgiven_amount ?? l.forgivenAmount ?? 0),
+      dueDate:        l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
+      createdAt:      String(l.created_at ?? l.createdAt ?? ''),
     }));
 
     setTransactions(txns as Transaction[]);
@@ -120,17 +126,15 @@ export default function Index() {
     setGoals(gls as Goal[]);
   };
 
-  // Calculate financial metrics
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalExpenses = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const balance = totalIncome - totalExpenses;
+  // Calculate financial metrics connected to accounts and loans
   const totalAccountFunds = accounts.reduce((sum, a) => sum + (a.balance ?? 0), 0);
+  const finance = summarize(transactions);
+
+  // Total Balance represents your actual available liquid funds (matches Accounts & Payment Methods)
+  const balance = accounts.length > 0 ? totalAccountFunds : finance.netCashFlow;
+
+  const totalIncome = finance.income;
+  const totalExpenses = finance.expense;
 
   const thisMonthTransactions = transactions.filter(t => {
     const transactionDate = new Date(t.date);
@@ -139,32 +143,18 @@ export default function Index() {
            transactionDate.getFullYear() === now.getFullYear();
   });
 
-  const monthlyIncome = thisMonthTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const monthlyExpenses = thisMonthTransactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+  const monthFinance = summarize(thisMonthTransactions);
+  const monthlyIncome = monthFinance.income;
+  const monthlyExpenses = monthFinance.expense;
   const monthlySavings = monthlyIncome - monthlyExpenses;
   const expenseRatio = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0;
 
-  // Calculate loan statistics - ONLY PENDING LOANS (matching Loans page)
-  // Server status: 'pending' | 'paid' | 'partial'; map them for display
-  const pendingLoans = loans.filter(l => {
-    const raw = (l as unknown as { _serverStatus?: string })._serverStatus;
-    return raw ? raw === 'pending' : l.status === 'pending';
-  });
-  
-  const outstandingGiven = pendingLoans
-    .filter(l => l.type === 'given')
-    .reduce((sum, l) => sum + l.amount, 0);
-
-  const outstandingTaken = pendingLoans
-    .filter(l => l.type === 'taken')
-    .reduce((sum, l) => sum + l.amount, 0);
-
-  const netPosition = outstandingGiven - outstandingTaken;
+  // Calculate loan statistics taking into account partial repayments and remaining balances
+  const loanStats = loanSummary(loans as unknown as Parameters<typeof loanSummary>[0]);
+  const outstandingGiven = loanStats.outstandingGiven;
+  const outstandingTaken = loanStats.outstandingTaken;
+  const netPosition = loanStats.netPosition;
+  const netWorth = balance + netPosition;
 
   // Goals calculations
   const activeGoals = goals.filter(g => g.status === 'active');
@@ -279,10 +269,17 @@ export default function Index() {
                     <div className={`text-3xl font-bold ${balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {formatCurrency(balance)}
                     </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
-                      {balance >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                      Overall financial status
-                    </p>
+                    <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        {balance >= 0 ? <ArrowUpRight className="h-3 w-3 text-green-500" /> : <ArrowDownRight className="h-3 w-3 text-red-500" />}
+                        Liquid Cash & Bank
+                      </span>
+                      {netPosition !== 0 && (
+                        <span className="font-semibold text-primary">
+                          Net Worth: {formatCurrency(netWorth)}
+                        </span>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -673,56 +670,44 @@ export default function Index() {
                 <CardContent>
                   {recentTransactionsList.length > 0 ? (
                     <div className="space-y-3">
-                      {recentTransactionsList.map((transaction, index) => (
-                        <div 
-                          key={transaction.id} 
-                          className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-xl hover:from-muted hover:to-muted/50 transition-all duration-300 border border-border/50 hover-lift"
-                          style={{ animationDelay: `${index * 100}ms` }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${
-                              transaction.type === 'income' ? 'bg-green-500 pulse-subtle' :
-                              transaction.type === 'transfer' ? 'bg-indigo-500 pulse-subtle' :
-                              transaction.type === 'loan_given' ? 'bg-amber-500 pulse-subtle' :
-                              transaction.type === 'loan_taken' ? 'bg-blue-500 pulse-subtle' :
-                              'bg-red-500 pulse-subtle'
-                            }`} />
-                            <div>
-                              <p className="font-semibold text-foreground">{transaction.title}</p>
-                              {transaction.type === 'transfer' ? (
-                                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                  <span>Transfer:</span>
-                                  <span className="font-medium text-foreground">{transaction.accountName || 'Account'}</span>
-                                  <span>→</span>
-                                  <span className="font-medium text-foreground">{transaction.toAccountName || 'Account'}</span>
+                      {recentTransactionsList.map((transaction, index) => {
+                        const meta = txMeta(transaction.type);
+                        return (
+                            <div 
+                              key={transaction.id} 
+                              className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-xl hover:from-muted hover:to-muted/50 transition-all duration-300 border border-border/50 hover-lift"
+                              style={{ animationDelay: `${index * 100}ms` }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-3 h-3 rounded-full ${meta.dot} pulse-subtle`} />
+                                <div>
+                                  <p className="font-semibold text-foreground">{transaction.title}</p>
+                                  {transaction.type === 'transfer' ? (
+                                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                      <span>Transfer:</span>
+                                      <span className="font-medium text-foreground">{transaction.accountName || 'Account'}</span>
+                                      <span>→</span>
+                                      <span className="font-medium text-foreground">{transaction.toAccountName || 'Account'}</span>
+                                    </p>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                      {users.find(u => u.id === transaction.userId)?.name || 'Unknown'} • {categories.find(c => c.id === transaction.categoryId)?.name || 'Uncategorized'}
+                                      {transaction.accountName ? ` • ${transaction.accountName}` : ''}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className={`font-bold text-lg ${meta.text}`}>
+                                  {meta.prefix}{formatCurrency(transaction.amount)}
                                 </p>
-                              ) : (
                                 <p className="text-sm text-muted-foreground">
-                                  {users.find(u => u.id === transaction.userId)?.name || 'Unknown'} • {categories.find(c => c.id === transaction.categoryId)?.name || 'Uncategorized'}
-                                  {transaction.accountName ? ` • ${transaction.accountName}` : ''}
+                                  {new Date(transaction.date).toLocaleDateString()}
                                 </p>
-                              )}
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <p className={`font-bold text-lg ${
-                              transaction.type === 'income' ? 'text-green-600 dark:text-green-400' :
-                              transaction.type === 'transfer' ? 'text-indigo-600 dark:text-indigo-400' :
-                              transaction.type === 'loan_given' ? 'text-amber-600 dark:text-amber-400' :
-                              transaction.type === 'loan_taken' ? 'text-blue-600 dark:text-blue-400' :
-                              'text-red-600 dark:text-red-400'
-                            }`}>
-                              {transaction.type === 'income' ? '+' :
-                               transaction.type === 'transfer' ? '⇄ ' :
-                               transaction.type === 'loan_taken' ? '+' :
-                               '-'}{formatCurrency(transaction.amount)}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {new Date(transaction.date).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-12 text-muted-foreground">

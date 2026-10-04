@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { recomputeLoan, remainingOf, originTxIdOf } = require('../lib/loanSync');
 
 const router = express.Router();
 
@@ -138,8 +139,11 @@ router.post('/:id/repay', authenticateToken, (req, res) => {
 
     const loan = db.get('loans').find({ id, user_id: userId }).value();
     if (!loan) return res.status(404).json({ error: 'Loan not found' });
+    if (['paid', 'repaid', 'forgiven'].includes(loan.status)) {
+      return res.status(400).json({ error: `Loan is already ${loan.status}` });
+    }
 
-    const repayAmount = amount !== undefined && amount !== '' ? parseFloat(amount) : parseFloat(loan.amount);
+    const repayAmount = amount !== undefined && amount !== '' ? parseFloat(amount) : remainingOf(loan);
     if (!repayAmount || repayAmount <= 0) {
       return res.status(400).json({ error: 'Repayment amount must be greater than 0' });
     }
@@ -151,10 +155,11 @@ router.post('/:id/repay', authenticateToken, (req, res) => {
     const voucherId = generateNextVoucherId(userId, repayDate);
 
     // 2. Transaction direction:
-    // If loan.type === 'given' (you lent money): borrower returns money -> cash in -> income (balance +)
-    // If loan.type === 'taken' (you borrowed money): you pay lender back -> cash out -> expense (balance -)
+    // If loan.type === 'given' (you lent money): borrower returns money -> cash in  -> loan_received (balance +)
+    // If loan.type === 'taken' (you borrowed money): you pay lender back -> cash out -> loan_repaid  (balance -)
+    // These are NOT income/expense, so reports are not inflated by loan movements.
     const isGiven = loan.type === 'given';
-    const txType = isGiven ? 'income' : 'expense';
+    const txType = isGiven ? 'loan_received' : 'loan_repaid';
     const personName = loan.person || 'Contact';
     const txTitle = isGiven 
       ? `Loan Repayment from ${personName}`
@@ -183,7 +188,7 @@ router.post('/:id/repay', authenticateToken, (req, res) => {
       .find(u => u.user_id === userId && (u.id === loan.userId || (u.name && u.name.toLowerCase() === personName.toLowerCase())))
       .value();
 
-    // 5. Create transaction record
+    // 5. Create transaction record (linked to the loan)
     const targetAccountId = account_id || loan.account_id || null;
     const newTx = {
       id:                uuidv4(),
@@ -196,26 +201,16 @@ router.post('/:id/repay', authenticateToken, (req, res) => {
       category_id:       category.id,
       financial_user_id: finUser ? finUser.id : (loan.userId || null),
       account_id:        targetAccountId,
+      loan_id:           loan.id,
       date:              repayDate,
       created_at:        now,
       updated_at:        now,
     };
     db.get('transactions').push(newTx).write();
 
-    // 6. Update loan status
-    const previousRepaid = parseFloat(loan.repaid_amount) || 0;
-    const totalRepaidSoFar = previousRepaid + repayAmount;
-    const isFullyPaid = totalRepaidSoFar >= parseFloat(loan.amount);
-
-    const updatedLoan = {
-      ...loan,
-      status:            isFullyPaid ? 'paid' : 'partial',
-      repaid_amount:     totalRepaidSoFar,
-      repaid_date:       repayDate,
-      repaid_account_id: targetAccountId,
-      updated_at:        now,
-    };
-    db.get('loans').find({ id, user_id: userId }).assign(updatedLoan).write();
+    // 6. Update loan status from all linked repayments
+    db.get('loans').find({ id, user_id: userId }).assign({ repaid_account_id: targetAccountId }).write();
+    const updatedLoan = recomputeLoan(userId, id);
 
     res.json({
       success: true,
@@ -237,8 +232,11 @@ router.post('/:id/forgive', authenticateToken, (req, res) => {
     const loan = db.get('loans').find({ id, user_id: userId }).value();
     if (!loan) return res.status(404).json({ error: 'Loan not found' });
 
-    if (loan.status === 'forgiven' || loan.status === 'paid') {
+    if (['forgiven', 'paid', 'repaid'].includes(loan.status)) {
       return res.status(400).json({ error: `Loan is already marked as ${loan.status}` });
+    }
+    if (loan.type !== 'given') {
+      return res.status(400).json({ error: 'Only loans you have given can be forgiven' });
     }
 
     const { category_id, date, notes } = req.body;
@@ -283,20 +281,48 @@ router.post('/:id/forgive', authenticateToken, (req, res) => {
       .value();
 
     let txRecord = null;
-    if (existingTx) {
-      // Convert existing loan transaction into a permanent expense under Loan Forgiven
+    if (existingTx && previousRepaid <= 0) {
+      // Nothing repaid: convert the whole original loan transaction into a permanent expense.
+      // Cash already left the account when the loan was given, so balance is unchanged.
       const updatedTx = {
         ...existingTx,
         title:       `Loan Forgiven - ${personName}`,
         type:        'expense',
         category_id: category.id,
+        forgiven_loan_id: loan.id,
         description: notes || (existingTx.description ? `${existingTx.description} (Forgiven / Walked Over)` : 'Loan forgiven / walked over'),
         updated_at:  now,
       };
       db.get('transactions').find({ id: existingTx.id }).assign(updatedTx).write();
       txRecord = updatedTx;
+    } else if (existingTx) {
+      // Partially repaid: split the original transaction.
+      //  - original keeps the repaid part as a loan movement
+      //  - a new expense holds the forgiven remainder (same account & date, so balance is unchanged)
+      db.get('transactions').find({ id: existingTx.id }).assign({
+        amount: Math.round(previousRepaid * 100) / 100,
+        updated_at: now,
+      }).write();
+
+      txRecord = {
+        id:                uuidv4(),
+        user_id:           userId,
+        voucher_id:        generateNextVoucherId(userId, forgiveDate),
+        title:             `Loan Forgiven - ${personName}`,
+        description:       notes || 'Loan forgiven / walked over (unpaid remainder)',
+        amount:            remainingAmount,
+        type:              'expense',
+        category_id:       category.id,
+        financial_user_id: existingTx.financial_user_id || null,
+        account_id:        existingTx.account_id || null,
+        forgiven_loan_id:  loan.id,
+        date:              existingTx.date || forgiveDate,
+        created_at:        now,
+        updated_at:        now,
+      };
+      db.get('transactions').push(txRecord).write();
     } else {
-      // If no previous transaction exists, create an expense transaction
+      // No origin transaction was ever recorded: the money is now permanently gone -> expense
       const voucherId = generateNextVoucherId(userId, forgiveDate);
       let finUser = db.get('financial_users')
         .find(u => u.user_id === userId && (u.id === loan.userId || (u.name && u.name.toLowerCase() === personName.toLowerCase())))
@@ -313,6 +339,7 @@ router.post('/:id/forgive', authenticateToken, (req, res) => {
         category_id:       category.id,
         financial_user_id: finUser ? finUser.id : (loan.userId || null),
         account_id:        loan.account_id || null,
+        forgiven_loan_id:  loan.id,
         date:              forgiveDate,
         created_at:        now,
         updated_at:        now,
@@ -342,11 +369,12 @@ router.post('/:id/forgive', authenticateToken, (req, res) => {
   }
 });
 
-// PUT /api/loans/:id — update a loan
+// PUT /api/loans/:id — update a loan (keeps the linked origin transaction in sync)
 router.put('/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    const loan = db.get('loans').find({ id, user_id: req.user.id }).value();
+    const userId = req.user.id;
+    const loan = db.get('loans').find({ id, user_id: userId }).value();
     if (!loan) return res.status(404).json({ error: 'Loan not found' });
 
     const { person, amount, type, description, date, due_date, status } = req.body;
@@ -361,8 +389,25 @@ router.put('/:id', authenticateToken, (req, res) => {
       status:      status      ?? loan.status,
       updated_at:  new Date().toISOString(),
     };
-    db.get('loans').find({ id, user_id: req.user.id }).assign(updated).write();
-    res.json(updated);
+    db.get('loans').find({ id, user_id: userId }).assign(updated).write();
+
+    // Keep the origin transaction (cash out/in when loan was made) in sync
+    const originId = originTxIdOf(loan);
+    if (originId) {
+      const originTx = db.get('transactions').find({ id: originId, user_id: userId }).value();
+      if (originTx && (originTx.type === 'loan_given' || originTx.type === 'loan_taken')) {
+        db.get('transactions').find({ id: originId, user_id: userId }).assign({
+          amount: updated.amount,
+          type:   updated.type === 'taken' ? 'loan_taken' : 'loan_given',
+          date:   date ? date : originTx.date,
+          updated_at: updated.updated_at,
+        }).write();
+      }
+    }
+
+    // Re-derive status from real repayments (unless forgiven)
+    const finalLoan = updated.status === 'forgiven' ? updated : (recomputeLoan(userId, id) || updated);
+    res.json(finalLoan);
   } catch (e) {
     console.error('update loan error', e);
     res.status(500).json({ error: 'Failed to update loan' });
@@ -370,13 +415,32 @@ router.put('/:id', authenticateToken, (req, res) => {
 });
 
 // DELETE /api/loans/:id
+// By default also removes the loan's linked transactions (origin, repayments, forgiveness)
+// so account balances and totals stay consistent. Pass ?keep_transactions=1 to keep them.
 router.delete('/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    const loan = db.get('loans').find({ id, user_id: req.user.id }).value();
+    const userId = req.user.id;
+    const loan = db.get('loans').find({ id, user_id: userId }).value();
     if (!loan) return res.status(404).json({ error: 'Loan not found' });
-    db.get('loans').remove({ id, user_id: req.user.id }).write();
-    res.json({ message: 'Deleted' });
+
+    let removedTransactions = 0;
+    if (req.query.keep_transactions !== '1') {
+      const originId = originTxIdOf(loan);
+      const linked = db.get('transactions')
+        .filter(t => t.user_id === userId && (
+          (originId && t.id === originId) ||
+          t.loan_id === id ||
+          t.forgiven_loan_id === id
+        ))
+        .value();
+      removedTransactions = linked.length;
+      const ids = new Set(linked.map(t => t.id));
+      db.get('transactions').remove(t => t.user_id === userId && ids.has(t.id)).write();
+    }
+
+    db.get('loans').remove({ id, user_id: userId }).write();
+    res.json({ message: 'Deleted', removedTransactions });
   } catch (e) {
     console.error('delete loan error', e);
     res.status(500).json({ error: 'Failed to delete loan' });

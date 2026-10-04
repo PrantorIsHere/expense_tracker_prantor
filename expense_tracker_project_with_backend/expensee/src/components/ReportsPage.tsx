@@ -21,8 +21,11 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText, PiggyBank } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText, PiggyBank, Banknote, Wallet, Clock, CheckCircle, HeartHandshake } from 'lucide-react';
 import { generateCategoryBreakdownPDF } from '@/lib/categoryBreakdownPDF';
+import { getAccounts } from '@/lib/storage';
+import { Account } from '@/components/types';
+import { loanSummary, loanRemaining, isLoanOpen, summarize } from '@/lib/finance';
 
 export default function ReportsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -30,15 +33,17 @@ export default function ReportsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   useEffect(() => {
     (async () => {
-      const [txnsRaw, cats, usrs, lnsRaw, glsRaw] = await Promise.all([
+      const [txnsRaw, cats, usrs, lnsRaw, glsRaw, accs] = await Promise.all([
         apiClient.getTransactions(),
         getCategories(),
         getUsers(),
         apiClient.getLoans(),
         apiClient.getGoals(),
+        getAccounts(),
       ]);
 
       // Map transactions server → frontend (with fallback for old local storage data)
@@ -58,14 +63,18 @@ export default function ReportsPage() {
 
       // Map loans server → frontend
       const lns = (lnsRaw as Record<string, unknown>[]).map(l => ({
-        id:            String(l.id ?? ''),
-        transactionId: '',
-        userId:        String(l.user_id ?? l.userId ?? ''),
-        amount:        Number(l.amount ?? 0),
-        type:          l.type as Loan['type'],
-        status:        l.status === 'paid' ? 'repaid' : (l.status as Loan['status']) || 'pending',
-        dueDate:       l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
-        createdAt:     String(l.created_at ?? l.createdAt ?? ''),
+        id:             String(l.id ?? ''),
+        transactionId:  String(l.transaction_id ?? l.transactionId ?? ''),
+        userId:         String(l.user_id ?? l.userId ?? ''),
+        person:         l.person ? String(l.person) : undefined,
+        amount:         Number(l.amount ?? 0),
+        type:           l.type as Loan['type'],
+        status:         String(l.status ?? 'pending') as Loan['status'],
+        repaidAmount:   Number(l.repaid_amount ?? l.repaidAmount ?? 0),
+        repaid_amount:  Number(l.repaid_amount ?? l.repaidAmount ?? 0),
+        forgivenAmount: Number(l.forgiven_amount ?? l.forgivenAmount ?? 0),
+        dueDate:        l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
+        createdAt:      String(l.created_at ?? l.createdAt ?? ''),
       }));
 
       // Map goals server → frontend
@@ -87,6 +96,7 @@ export default function ReportsPage() {
       setUsers(usrs as User[]);
       setLoans(lns as Loan[]);
       setGoals(gls as Goal[]);
+      setAccounts(accs as Account[]);
     })();
   }, []);
 
@@ -142,8 +152,8 @@ export default function ReportsPage() {
   const categoryStats = useMemo(() => {
     const stats = categories.map((cat) => {
       const catTxs = transactions.filter((t) => t.categoryId === cat.id);
-      const income = catTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expense = catTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      const income = catTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
+      const expense = catTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
       const count = catTxs.length;
       return {
         id: cat.id,
@@ -159,8 +169,8 @@ export default function ReportsPage() {
     const knownCategoryIds = new Set(categories.map(c => c.id));
     const uncategorizedTxs = transactions.filter(t => !t.categoryId || !knownCategoryIds.has(t.categoryId));
     if (uncategorizedTxs.length > 0) {
-      const income = uncategorizedTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expense = uncategorizedTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+      const income = uncategorizedTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
+      const expense = uncategorizedTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
       stats.push({
         id: 'uncategorized',
         name: 'Uncategorized',
@@ -253,10 +263,7 @@ export default function ReportsPage() {
   };
 
   const getLoansSummary = () => {
-    const totalGiven = loans.filter((l) => l.type === 'given' && l.status === 'pending').reduce((sum, l) => sum + l.amount, 0);
-    const totalTaken = loans.filter((l) => l.type === 'taken' && l.status === 'pending').reduce((sum, l) => sum + l.amount, 0);
-    const netPosition = totalGiven - totalTaken;
-    return { totalGiven, totalTaken, netPosition };
+    return loanSummary(loans as unknown as Parameters<typeof loanSummary>[0]);
   };
 
   const getActivitySummary = () => {
@@ -472,6 +479,93 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Loans & Receivables Portfolio */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-amber-600" />
+              Loans & Receivables Portfolio
+            </span>
+            <Badge variant={loansSummary.netPosition >= 0 ? "default" : "destructive"}>
+              Net Position: {loansSummary.netPosition >= 0 ? '+' : ''}{formatCurrency(loansSummary.netPosition)}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <p className="text-xs text-muted-foreground font-medium">Outstanding Given (Receivables)</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(loansSummary.outstandingGiven)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Lent to others (pending)</p>
+            </div>
+            <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-xs text-muted-foreground font-medium">Outstanding Taken (Payables)</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(loansSummary.outstandingTaken)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Borrowed from others (pending)</p>
+            </div>
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-xs text-muted-foreground font-medium">Net Loan Position</p>
+              <p className={`text-2xl font-bold mt-1 ${loansSummary.netPosition >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {loansSummary.netPosition >= 0 ? '+' : ''}{formatCurrency(loansSummary.netPosition)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {loansSummary.netPosition >= 0 ? 'You are owed' : 'You owe'}
+              </p>
+            </div>
+            <div className="p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+              <p className="text-xs text-muted-foreground font-medium">Estimated Net Worth</p>
+              <p className="text-2xl font-bold text-purple-600 mt-1">
+                {formatCurrency(accounts.reduce((s, a) => s + (a.balance ?? 0), 0) + loansSummary.netPosition)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Liquid Funds + Net Loans</p>
+            </div>
+          </div>
+
+          {loans.filter(l => isLoanOpen(l)).length > 0 && (
+            <div className="space-y-3 mt-4">
+              <h3 className="text-sm font-semibold text-foreground">Active Loan Commitments</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {loans.filter(l => isLoanOpen(l)).map(loan => {
+                  const remaining = loanRemaining(loan);
+                  const repaid = Number(loan.repaid_amount || 0);
+                  const pct = loan.amount > 0 ? (repaid / loan.amount) * 100 : 0;
+                  return (
+                    <div key={loan.id} className="p-3 border rounded-lg bg-card/50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={loan.type === 'given' ? 'default' : 'destructive'} className="text-xs">
+                            {loan.type === 'given' ? 'LENT' : 'BORROWED'}
+                          </Badge>
+                          <span className="font-semibold text-sm">{loan.person || 'Contact'}</span>
+                        </div>
+                        <span className={`font-bold text-sm ${loan.type === 'given' ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatCurrency(remaining)} remaining
+                        </span>
+                      </div>
+                      {repaid > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Repaid: {formatCurrency(repaid)} / {formatCurrency(loan.amount)}</span>
+                            <span>{pct.toFixed(0)}%</span>
+                          </div>
+                          <Progress value={pct} className="h-1.5" />
+                        </div>
+                      )}
+                      {loan.due_date && (
+                        <p className="text-xs text-muted-foreground">
+                          Due: {new Date(loan.due_date).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

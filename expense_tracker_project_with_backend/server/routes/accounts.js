@@ -24,9 +24,11 @@ const calculateAccountBalance = (account, userTxs) => {
       }
     } else {
       if (fromAccId === account.id) {
-        if (t.type === 'income' || t.type === 'loan_taken') {
+        // Cash IN: income, borrowed money, loan repayment received back
+        if (t.type === 'income' || t.type === 'loan_taken' || t.type === 'loan_received') {
           txSum += amt;
-        } else if (t.type === 'expense' || t.type === 'loan_given') {
+        // Cash OUT: expense, money lent out, loan repayment paid to lender
+        } else if (t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid') {
           txSum -= amt;
         }
       }

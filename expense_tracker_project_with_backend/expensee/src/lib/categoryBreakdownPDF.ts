@@ -109,8 +109,8 @@ export function generateCategoryBreakdownPDF(transactions: Transaction[], catego
 
   const stats = categories.map((cat) => {
     const catTxs = transactions.filter((t) => t.categoryId === cat.id);
-    const income = catTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const expense = catTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const income = catTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
+    const expense = catTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
     const count = catTxs.length;
     return {
       id: cat.id,
@@ -126,8 +126,8 @@ export function generateCategoryBreakdownPDF(transactions: Transaction[], catego
   const knownCategoryIds = new Set(categories.map(c => c.id));
   const uncategorizedTxs = transactions.filter(t => !t.categoryId || !knownCategoryIds.has(t.categoryId));
   if (uncategorizedTxs.length > 0) {
-    const income = uncategorizedTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const expense = uncategorizedTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const income = uncategorizedTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
+    const expense = uncategorizedTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
     stats.push({
       id: 'uncategorized',
       name: 'Uncategorized',

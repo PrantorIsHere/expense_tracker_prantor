@@ -28,6 +28,7 @@ import {
   Trash2,
   HeartHandshake
 } from 'lucide-react';
+import { loanSummary, loanRemaining, isLoanOpen } from '@/lib/finance';
 
 interface LoansManagerProps {
   onDataChange: () => void;
@@ -278,19 +279,12 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   };
 
   const getLoansSummary = () => {
-    const pendingLoans = loans.filter(l => l.status === 'pending');
-
-    const totalGiven = pendingLoans
-      .filter(l => l.type === 'given')
-      .reduce((sum, l) => sum + l.amount, 0);
-
-    const totalTaken = pendingLoans
-      .filter(l => l.type === 'taken')
-      .reduce((sum, l) => sum + l.amount, 0);
-
-    const netPosition = totalGiven - totalTaken;
-
-    return { totalGiven, totalTaken, netPosition };
+    const stats = loanSummary(loans as unknown as Parameters<typeof loanSummary>[0]);
+    return {
+      totalGiven: stats.outstandingGiven,
+      totalTaken: stats.outstandingTaken,
+      netPosition: stats.netPosition,
+    };
   };
 
   const filteredLoans = loans.filter((loan) => {
@@ -304,18 +298,21 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       description.includes(searchValue);
 
     const matchesType = filterType === 'all' || loan.type === filterType;
-    // server status: 'pending' | 'paid' | 'partial'; UI filter also uses 'repaid' as alias for 'paid'
+    // server status: 'pending' | 'paid' | 'partial' | 'forgiven'
     const matchesStatus =
       filterStatus === 'all' ||
-      loan.status === filterStatus ||
-      (filterStatus === 'paid' && loan.status === 'paid') ||
-      (filterStatus === 'repaid' && loan.status === 'paid') ||
+      (filterStatus === 'pending' && isLoanOpen(loan)) ||
+      (filterStatus === 'partial' && loan.status === 'partial') ||
+      (filterStatus === 'paid' && (loan.status === 'paid' || loan.status === 'repaid')) ||
+      (filterStatus === 'repaid' && (loan.status === 'paid' || loan.status === 'repaid')) ||
       (filterStatus === 'forgiven' && loan.status === 'forgiven');
 
     return matchesSearch && matchesType && matchesStatus;
   }).sort((a, b) => {
-    if (a.status !== b.status) {
-      return a.status === 'pending' ? -1 : 1;
+    const openA = isLoanOpen(a);
+    const openB = isLoanOpen(b);
+    if (openA !== openB) {
+      return openA ? -1 : 1;
     }
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
@@ -620,8 +617,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="paid">Repaid / Paid</SelectItem>
+                  <SelectItem value="pending">Pending (Unpaid & Partial)</SelectItem>
+                  <SelectItem value="partial">Partially Repaid Only</SelectItem>
+                  <SelectItem value="paid">Fully Repaid / Paid</SelectItem>
                   <SelectItem value="forgiven">Forgiven / Walked Over</SelectItem>
                 </SelectContent>
               </Select>
@@ -682,7 +680,12 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                         <TableCell className={`font-medium ${
                           loan.type === 'given' ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {formatCurrency(loan.amount)}
+                          <div>{formatCurrency(loan.amount)}</div>
+                          {loan.status === 'partial' && (
+                            <div className="text-xs text-amber-600 dark:text-amber-400 font-normal">
+                              Due: {formatCurrency(loanRemaining(loan as unknown as Parameters<typeof loanRemaining>[0]))}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           {(() => {
@@ -701,7 +704,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                         <TableCell>
                           {loan.due_date ? (
                             <span className={
-                              new Date(loan.due_date) < new Date() && loan.status === 'pending'
+                              new Date(loan.due_date) < new Date() && isLoanOpen(loan)
                                 ? 'text-red-600 font-medium'
                                 : ''
                             }>
@@ -713,10 +716,12 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                         </TableCell>
                         <TableCell>
                           <Badge 
-                            variant={loan.status === 'pending' ? 'outline' : 'default'}
+                            variant={isLoanOpen(loan) ? 'outline' : 'default'}
                             className={
                               loan.status === 'forgiven'
                                 ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                : loan.status === 'partial'
+                                ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
                                 : ''
                             }
                           >
@@ -724,6 +729,11 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                               <>
                                 <Clock className="mr-1 h-3 w-3" />
                                 PENDING
+                              </>
+                            ) : loan.status === 'partial' ? (
+                              <>
+                                <Clock className="mr-1 h-3 w-3 text-blue-500" />
+                                PARTIAL ({formatCurrency(loan.repaid_amount || 0)} paid)
                               </>
                             ) : loan.status === 'forgiven' ? (
                               <>
@@ -733,14 +743,14 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                             ) : (
                               <>
                                 <CheckCircle className="mr-1 h-3 w-3 text-green-500" />
-                                {loan.status.toUpperCase()}
+                                REPAID
                               </>
                             )}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {loan.status === 'pending' && (
+                            {isLoanOpen(loan) && (
                               <>
                                 <Button
                                   size="sm"

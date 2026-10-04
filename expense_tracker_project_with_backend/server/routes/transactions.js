@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { findLoanByOriginTx, recomputeLoan, LOAN_ORIGIN_TYPES } = require('../lib/loanSync');
 
 const router = express.Router();
 
@@ -91,6 +92,7 @@ router.post('/', authenticateToken, (req, res) => {
       financial_user_id: financial_user_id || null,
       account_id:        targetAccountId,
       to_account_id:     targetToAccountId,
+      loan_id:           req.body.loan_id || null,
       date,
       created_at:        now,
       updated_at:        now,
@@ -160,6 +162,57 @@ router.put('/:id', authenticateToken, (req, res) => {
     };
 
     db.get('transactions').find({ id, user_id: userId }).assign(updated).write();
+
+    // ---- Keep loans in sync ----
+    const originLoan = findLoanByOriginTx(userId, id);
+    const wasLoanOrigin = LOAN_ORIGIN_TYPES.includes(tx.type);
+    const isLoanOrigin = LOAN_ORIGIN_TYPES.includes(updated.type);
+
+    if (originLoan && isLoanOrigin) {
+      // Loan origin edited -> mirror amount/type/date/account on the loan
+      db.get('loans').find({ id: originLoan.id, user_id: userId }).assign({
+        amount:     updated.amount,
+        type:       updated.type === 'loan_taken' ? 'taken' : 'given',
+        date:       updated.date,
+        account_id: updated.account_id,
+        updated_at: updated.updated_at,
+      }).write();
+      recomputeLoan(userId, originLoan.id);
+    } else if (originLoan && wasLoanOrigin && !isLoanOrigin) {
+      // Re-classified away from a loan -> it is no longer a loan
+      const hasRepayments = db.get('transactions').some(t => t.user_id === userId && t.loan_id === originLoan.id).value();
+      if (hasRepayments) {
+        db.get('loans').find({ id: originLoan.id, user_id: userId }).assign({ transaction_id: null, transactionId: null }).write();
+      } else {
+        db.get('loans').remove({ id: originLoan.id, user_id: userId }).write();
+      }
+    } else if (!originLoan && !wasLoanOrigin && isLoanOrigin) {
+      // Re-classified into a loan -> create the loan record
+      let personName = 'Contact';
+      if (updated.financial_user_id) {
+        const u = db.get('financial_users').find({ id: updated.financial_user_id, user_id: userId }).value();
+        if (u && u.name) personName = u.name;
+      }
+      db.get('loans').push({
+        id:             uuidv4(),
+        user_id:        userId,
+        transaction_id: id,
+        person:         personName,
+        amount:         updated.amount,
+        type:           updated.type === 'loan_given' ? 'given' : 'taken',
+        description:    updated.title,
+        date:           updated.date,
+        due_date:       null,
+        status:         'pending',
+        account_id:     updated.account_id,
+        created_at:     updated.updated_at,
+        updated_at:     updated.updated_at,
+      }).write();
+    }
+
+    // Repayment edited -> recompute the loan's repaid amount/status
+    if (tx.loan_id) recomputeLoan(userId, tx.loan_id);
+
     res.json(updated);
   } catch (e) {
     console.error('update transaction error', e);
@@ -168,6 +221,8 @@ router.put('/:id', authenticateToken, (req, res) => {
 });
 
 // DELETE /api/transactions/:id
+// If the transaction is a loan's origin, the loan and its repayments are removed too.
+// If it is a repayment, the loan's repaid amount/status is recalculated.
 router.delete('/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
@@ -179,7 +234,21 @@ router.delete('/:id', authenticateToken, (req, res) => {
     }
 
     db.get('transactions').remove({ id, user_id: userId }).write();
-    res.json({ message: 'Deleted' });
+
+    let removedLoan = null;
+    let removedRepayments = 0;
+    const originLoan = findLoanByOriginTx(userId, id);
+    if (originLoan) {
+      const repayments = db.get('transactions').filter(t => t.user_id === userId && t.loan_id === originLoan.id).value();
+      removedRepayments = repayments.length;
+      db.get('transactions').remove(t => t.user_id === userId && t.loan_id === originLoan.id).write();
+      db.get('loans').remove({ id: originLoan.id, user_id: userId }).write();
+      removedLoan = originLoan.id;
+    }
+
+    if (tx.loan_id) recomputeLoan(userId, tx.loan_id);
+
+    res.json({ message: 'Deleted', removedLoan, removedRepayments });
   } catch (e) {
     console.error('delete transaction error', e);
     res.status(500).json({ error: 'Failed to delete transaction' });

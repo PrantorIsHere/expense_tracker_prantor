@@ -7,11 +7,12 @@ type TransactionPayload = {
   title: string;
   description?: string;
   amount: number;
-  type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'transfer';
+  type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'loan_received' | 'loan_repaid' | 'transfer';
   category_id?: string | null;
   financial_user_id?: string | null;
   account_id?: string | null;
   to_account_id?: string | null;
+  loan_id?: string | null;
   date: string;
 };
 
