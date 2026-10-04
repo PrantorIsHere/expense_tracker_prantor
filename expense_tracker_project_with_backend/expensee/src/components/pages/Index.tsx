@@ -155,6 +155,7 @@ export default function Index() {
   const outstandingTaken = loanStats.outstandingTaken;
   const netPosition = loanStats.netPosition;
   const netWorth = balance + netPosition;
+  const pendingLoansCount = loanStats.openGiven + loanStats.openTaken;
 
   // Goals calculations
   const activeGoals = goals.filter(g => g.status === 'active');
@@ -226,7 +227,7 @@ export default function Index() {
       <Sidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        pendingLoansCount={pendingLoans.length}
+        pendingLoansCount={pendingLoansCount}
         activeGoalsCount={activeGoals.length}
       />
 
@@ -454,7 +455,7 @@ export default function Index() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {accounts.map((account) => {
                         const isBank = account.type === 'bank';
-                        const isMobile = account.type === 'mobile_banking';
+                        const isMobile = (account.type as string) === 'mobile_banking' || account.type === 'mobile_wallet';
                         const isCash = account.type === 'cash';
 
                         const Icon = isBank ? Building2 : isMobile ? Smartphone : isCash ? Wallet : CreditCard;

@@ -303,8 +303,8 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       filterStatus === 'all' ||
       (filterStatus === 'pending' && isLoanOpen(loan)) ||
       (filterStatus === 'partial' && loan.status === 'partial') ||
-      (filterStatus === 'paid' && (loan.status === 'paid' || loan.status === 'repaid')) ||
-      (filterStatus === 'repaid' && (loan.status === 'paid' || loan.status === 'repaid')) ||
+      (filterStatus === 'paid' && (loan.status === 'paid' || (loan.status as string) === 'repaid')) ||
+      (filterStatus === 'repaid' && (loan.status === 'paid' || (loan.status as string) === 'repaid')) ||
       (filterStatus === 'forgiven' && loan.status === 'forgiven');
 
     return matchesSearch && matchesType && matchesStatus;

@@ -55,7 +55,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     title: '',
     description: '',
     amount: '',
-    type: 'expense' as 'income' | 'expense' | 'loan_given' | 'loan_taken',
+    type: 'expense' as Transaction['type'],
     categoryId: '',
     accountId: '',
     userId: '',
@@ -190,10 +190,11 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
 
   const handleDownloadVoucher = (transaction: Transaction) => {
     const user = users.find(u => u.id === transaction.userId);
-    const category = categories.find(c => c.id === transaction.categoryId) || {
+    const category: Category = categories.find(c => c.id === transaction.categoryId) || {
       id: transaction.categoryId || 'uncategorized',
       name: 'Uncategorized',
       color: '#6B7280',
+      createdAt: new Date().toISOString(),
     };
     
     if (user) {

@@ -709,11 +709,11 @@ export default function ReportsPage() {
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Total Given:</span>
-              <span className="text-green-600 font-bold">{formatCurrency(loansSummary.totalGiven)}</span>
+              <span className="text-green-600 font-bold">{formatCurrency(loansSummary.outstandingGiven)}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm font-medium">Total Taken:</span>
-              <span className="text-red-600 font-bold">{formatCurrency(loansSummary.totalTaken)}</span>
+              <span className="text-red-600 font-bold">{formatCurrency(loansSummary.outstandingTaken)}</span>
             </div>
             <div className="flex justify-between items-center border-t pt-2">
               <span className="text-sm font-medium">Net Position:</span>
