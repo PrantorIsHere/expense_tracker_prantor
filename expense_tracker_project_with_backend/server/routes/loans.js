@@ -30,16 +30,8 @@ const generateNextVoucherId = (userId, dateInput) => {
   const month = String(dhakaDate.getMonth() + 1).padStart(2, '0');
   const day = String(dhakaDate.getDate()).padStart(2, '0');
   const dateKey = `${year}-${month}-${day}`;
-
-  let counterRow = db.get('voucher_counters').find({ user_id: userId, date_key: dateKey }).value();
-  if (!counterRow) {
-    counterRow = { user_id: userId, date_key: dateKey, counter: 0 };
-    db.get('voucher_counters').push(counterRow).write();
-  }
-  const newCounter = counterRow.counter + 1;
-  db.get('voucher_counters').find({ user_id: userId, date_key: dateKey }).assign({ counter: newCounter }).write();
-
-  return `${dateKey}-${String(newCounter).padStart(4, '0')}`;
+  const { allocateNextVoucherId } = require('./vouchers');
+  return allocateNextVoucherId(userId, dateKey);
 };
 
 // POST /api/loans — create a loan (with optional initial account transaction)

@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { findLoanByOriginTx, recomputeLoan, LOAN_ORIGIN_TYPES } = require('../lib/loanSync');
+const { allocateNextVoucherId } = require('./vouchers');
 
 const router = express.Router();
 
@@ -71,10 +72,16 @@ router.post('/', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Required fields missing' });
     }
 
-    // Check voucher_id uniqueness
-    const duplicate = db.get('transactions').find({ voucher_id }).value();
+    // Check voucher_id uniqueness scoped to this user; if auto-generated pattern collides, allocate next available
+    let finalVoucherId = voucher_id;
+    const duplicate = db.get('transactions').find({ user_id: req.user.id, voucher_id: finalVoucherId }).value();
     if (duplicate) {
-      return res.status(400).json({ error: 'Voucher ID already exists' });
+      const m = String(finalVoucherId).match(/^(\d{4}-\d{2}-\d{2})-\d+$/);
+      if (m) {
+        finalVoucherId = allocateNextVoucherId(req.user.id, m[1]);
+      } else {
+        return res.status(400).json({ error: 'Voucher ID already exists' });
+      }
     }
 
     const now = new Date().toISOString();
@@ -83,7 +90,7 @@ router.post('/', authenticateToken, (req, res) => {
     const newTx = {
       id:                uuidv4(),
       user_id:           req.user.id,
-      voucher_id,
+      voucher_id:        finalVoucherId,
       title,
       description:       description || null,
       amount:            parseFloat(amount),
