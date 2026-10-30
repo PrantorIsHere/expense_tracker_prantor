@@ -11,7 +11,7 @@ router.get('/', authenticateToken, (req, res) => {
     const goals = db.get('goals')
       .filter({ user_id: req.user.id })
       .value()
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      .sort((a, b) => String(b.created_at || b.createdAt || '').localeCompare(String(a.created_at || a.createdAt || '')));
     res.json(goals);
   } catch (e) {
     console.error('get goals error', e);

@@ -253,8 +253,15 @@ class ApiClient {
   async updateSettings(settings: SettingsPayload) {
     return this.request('/settings', { method: 'PUT', body: JSON.stringify(settings) });
   }
+  /** Full raw backup of every record owned by the signed-in user (accounts included). */
+  async exportData() {
+    return this.request<Record<string, unknown>>('/settings/export');
+  }
   async importData(data: unknown) {
-    return this.request('/settings/import', { method: 'POST', body: JSON.stringify(data) });
+    return this.request<{ success: boolean; message: string; counts?: Record<string, number> }>(
+      '/settings/import',
+      { method: 'POST', body: JSON.stringify(data) },
+    );
   }
 
   // ── Additional Info — Transaction History ─────────────────────────────────

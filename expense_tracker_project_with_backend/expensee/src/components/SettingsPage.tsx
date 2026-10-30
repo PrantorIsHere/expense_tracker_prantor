@@ -413,9 +413,9 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     }
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
     try {
-      exportAllData();
+      await exportAllData();
       setMessage('Data exported successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
@@ -428,11 +428,17 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (!window.confirm('Importing will REPLACE all your current data (accounts, transactions, loans, goals, categories, users, settings and additional info) with the data in this backup file. Continue?')) {
+      event.target.value = '';
+      return;
+    }
+
     importData(file)
       .then(() => {
         setMessage('Data imported successfully!');
         loadSettings();
         loadCategories();
+        loadAccounts();
         loadDataSummary();
         onDataChange();
         setTimeout(() => setMessage(''), 3000);
@@ -1196,6 +1202,10 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div className="rounded-md border bg-background p-3">
+                    <p className="text-muted-foreground">Accounts</p>
+                    <p className="text-xl font-semibold">{dataSummary.accounts}</p>
+                  </div>
+                  <div className="rounded-md border bg-background p-3">
                     <p className="text-muted-foreground">Transactions</p>
                     <p className="text-xl font-semibold">{dataSummary.transactions}</p>
                   </div>
@@ -1259,8 +1269,8 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
               </div>
 
               <div className="text-sm text-gray-600 space-y-2">
-                <p><strong>Export Data:</strong> Download transactions, users, categories, loans, goals, settings, and additional info as a JSON backup.</p>
-                <p><strong>Import Data:</strong> Upload a previously exported JSON file to restore your data.</p>
+                <p><strong>Export Data:</strong> Download one JSON backup with everything: accounts (Cash, Bank, Mobile Wallets and opening balances), transactions and transfers, loans, goals, users, categories, settings, and additional info.</p>
+                <p><strong>Import Data:</strong> Upload a previously exported JSON file to restore all of it together. Account balances are recalculated exactly as they were.</p>
                 <p><strong>Reset All Data:</strong> Permanently delete all transactions, users, categories, and settings.</p>
               </div>
             </CardContent>

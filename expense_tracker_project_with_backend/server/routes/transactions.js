@@ -39,8 +39,10 @@ router.get('/', authenticateToken, (req, res) => {
       })
       .sort((a, b) => {
         // Sort by date DESC, then created_at DESC
-        if (b.date !== a.date) return b.date.localeCompare(a.date);
-        return b.created_at.localeCompare(a.created_at);
+        const bDate = String(b.date || b.created_at || b.createdAt || '');
+        const aDate = String(a.date || a.created_at || a.createdAt || '');
+        if (bDate !== aDate) return bDate.localeCompare(aDate);
+        return String(b.created_at || b.createdAt || '').localeCompare(String(a.created_at || a.createdAt || ''));
       });
 
     res.json(transactions);

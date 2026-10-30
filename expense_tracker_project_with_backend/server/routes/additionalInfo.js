@@ -57,7 +57,7 @@ router.get('/rent', authenticateToken, (req, res) => {
     const items = db.get('rent_history')
       .filter({ user_id: req.user.id })
       .value()
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     res.json(items);
   } catch (e) {
     console.error('get rent history error', e);
@@ -102,7 +102,7 @@ router.get('/gadgets', authenticateToken, (req, res) => {
     const items = db.get('gadget_warranties')
       .filter({ user_id: req.user.id })
       .value()
-      .sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate));
+      .sort((a, b) => String(b.purchaseDate || '').localeCompare(String(a.purchaseDate || '')));
     res.json(items);
   } catch (e) {
     console.error('get gadget warranties error', e);

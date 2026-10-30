@@ -203,44 +203,24 @@ export const generateUserVoucherId = async (): Promise<string> => {
 // Export / Import / Reset  (all still supported)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Downloads a single JSON backup containing EVERY record of the signed-in user:
+ * accounts (with opening balances), transactions & transfers, loans, goals,
+ * categories, financial users, settings, voucher counters and additional info.
+ * The raw rows come straight from the server so the file can be re-imported 1:1.
+ */
 export const exportUserData = async (): Promise<void> => {
-  try {
-    const [transactions, financialUsers, categories, loans, goals, settings] = await Promise.all([
-      getUserTransactions(),
-      getUserFinancialUsers(),
-      getUserCategories(),
-      getUserLoans(),
-      getUserGoals(),
-      getUserSettings(),
-    ]);
+  const data = await apiClient.exportData();
 
-    const additionalInfo = {
-      transactionHistory: (await apiClient.getAdditionalInfoTransactions()) || [],
-      rentHistory:        (await apiClient.getRentHistory()) || [],
-      gadgetWarranties:   (await apiClient.getGadgetWarranties()) || [],
-    };
-
-    const data = {
-      transactions,
-      financialUsers,
-      categories,
-      loans,
-      goals,
-      settings,
-      additionalInfo,
-      exportDate: new Date().toISOString(),
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `expense-tracker-backup-${getDhakaDateKey()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('exportUserData error:', e);
-  }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `expense-tracker-backup-${getDhakaDateKey()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
 export const importUserData = (file: File): Promise<void> => {
@@ -253,9 +233,9 @@ export const importUserData = (file: File): Promise<void> => {
         
         await apiClient.importData(data);
         
-        // Cache new settings immediately if they were imported
+        // Refresh the settings cache from the server so theme/currency apply immediately
         if (data.settings) {
-          cacheSettings(data.settings);
+          await getUserSettings();
         }
         
         resolve();

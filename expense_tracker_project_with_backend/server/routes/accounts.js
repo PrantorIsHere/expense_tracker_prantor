@@ -7,23 +7,42 @@ const router = express.Router();
 
 // Helper to calculate an account's dynamic current balance
 const calculateAccountBalance = (account, userTxs) => {
-  const initial = parseFloat(account.initial_balance) || 0;
+  const initial = parseFloat(account.initial_balance ?? account.initialBalance ?? 0) || 0;
   let txSum = 0;
+
+  const matchesAccount = (txAccId, txAccName, acc) => {
+    if (txAccId && String(txAccId).trim() === String(acc.id).trim()) return true;
+    if (txAccName && typeof txAccName === 'string' && acc.name) {
+      if (txAccName.trim().toLowerCase() === acc.name.trim().toLowerCase()) return true;
+    }
+    return false;
+  };
 
   for (const t of userTxs) {
     const amt = parseFloat(t.amount) || 0;
-    const fromAccId = t.account_id || t.accountId;
+    const fromAccId = t.account_id || t.accountId || t.from_account_id || t.fromAccountId;
     const toAccId = t.to_account_id || t.toAccountId;
 
+    let fromName = t.account_name || t.from_account_name || t.fromAccountName || (typeof t.account === 'string' ? t.account : null);
+    let toName = t.to_account_name || t.toAccountName;
+
     if (t.type === 'transfer') {
-      if (fromAccId === account.id) {
+      if ((!fromName || !toName) && typeof t.title === 'string' && t.title.includes('→')) {
+        const parts = t.title.replace(/^Transfer:\s*/i, '').split('→');
+        if (parts.length === 2) {
+          if (!fromName) fromName = parts[0].trim();
+          if (!toName) toName = parts[1].trim();
+        }
+      }
+
+      if (matchesAccount(fromAccId, fromName, account)) {
         txSum -= amt; // Outflow from source account
       }
-      if (toAccId === account.id) {
+      if (matchesAccount(toAccId, toName, account)) {
         txSum += amt; // Inflow to destination account
       }
     } else {
-      if (fromAccId === account.id) {
+      if (matchesAccount(fromAccId, fromName, account)) {
         // Cash IN: income, borrowed money, loan repayment received back
         if (t.type === 'income' || t.type === 'loan_taken' || t.type === 'loan_received') {
           txSum += amt;
@@ -35,7 +54,7 @@ const calculateAccountBalance = (account, userTxs) => {
     }
   }
 
-  return initial + txSum;
+  return Math.round((initial + txSum) * 100) / 100;
 };
 
 // Helper to generate sequential voucher ID in Dhaka time (V-YYYYMMDD-XXXX)
@@ -335,5 +354,6 @@ router.post('/transfer', authenticateToken, (req, res) => {
 });
 
 module.exports = router;
+module.exports.calculateAccountBalance = calculateAccountBalance;
 
 
