@@ -17,7 +17,7 @@ function allocateNextVoucherId(userId, dateKey) {
 
   // Also inspect actual existing transactions for this user on dateKey
   const prefix = `${dateKey}-`;
-  const userTxs = db.get('transactions').filter({ user_id: userId }).value() || [];
+  const userTxs = db.get('transactions').filter(t => t.user_id === userId || t.userId === userId).value() || [];
   let maxExisting = 0;
   for (const t of userTxs) {
     const vid = String(t.voucher_id || t.voucherId || '');
@@ -29,10 +29,10 @@ function allocateNextVoucherId(userId, dateKey) {
     }
   }
 
-  // Start from maxExisting + 1 so failed attempts don't skip numbers, while never colliding
-  let nextNum = Math.max(maxExisting + 1, 1);
+  // Start from maxExisting + 1 or stored counter, whichever is higher
+  let nextNum = Math.max(maxExisting + 1, (counterRow.counter || 0) + 1, 1);
   let voucherId = `${dateKey}-${String(nextNum).padStart(4, '0')}`;
-  while (db.get('transactions').find({ user_id: userId, voucher_id: voucherId }).value()) {
+  while (db.get('transactions').some(t => (t.user_id === userId || t.userId === userId) && (t.voucher_id === voucherId || t.voucherId === voucherId)).value()) {
     nextNum++;
     voucherId = `${dateKey}-${String(nextNum).padStart(4, '0')}`;
   }

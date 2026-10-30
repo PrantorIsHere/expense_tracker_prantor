@@ -94,6 +94,8 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     amount:      Number(t.amount ?? 0),
     type:        t.type as Transaction['type'],
     categoryId:  String(t.category_id ?? t.categoryId ?? ''),
+    categoryName:  t.category_name ? String(t.category_name) : (t.categoryName ? String(t.categoryName) : undefined),
+    categoryColor: t.category_color ? String(t.category_color) : (t.categoryColor ? String(t.categoryColor) : undefined),
     accountId:   String(t.account_id ?? t.accountId ?? ''),
     accountName: t.account_name ? String(t.account_name) : undefined,
     accountType:   t.account_type ? String(t.account_type) : undefined,
@@ -101,6 +103,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     toAccountName: t.to_account_name ? String(t.to_account_name) : undefined,
     loanId:        t.loan_id ? String(t.loan_id) : (t.loanId ? String(t.loanId) : undefined),
     userId:        String(t.financial_user_id ?? t.userId ?? ''),
+    userName:      t.user_name ? String(t.user_name) : (t.userName ? String(t.userName) : undefined),
     date:        String(t.date ?? ''),
     createdAt:   String(t.created_at ?? t.createdAt ?? ''),
     updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
@@ -189,13 +192,17 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   };
 
   const handleDownloadVoucher = (transaction: Transaction) => {
-    const user = users.find(u => u.id === transaction.userId);
-    const category: Category = categories.find(c => c.id === transaction.categoryId) || {
-      id: transaction.categoryId || 'uncategorized',
-      name: 'Uncategorized',
-      color: '#6B7280',
-      createdAt: new Date().toISOString(),
-    };
+    const user = users.find(u => u.id === transaction.userId)
+      || users.find(u => transaction.userName && u.name.toLowerCase() === transaction.userName.toLowerCase())
+      || (transaction.userName ? { id: transaction.userId || 'user', name: transaction.userName, createdAt: '' } : undefined);
+    const category: Category = categories.find(c => c.id === transaction.categoryId)
+      || categories.find(c => transaction.categoryName && c.name.toLowerCase() === transaction.categoryName.toLowerCase())
+      || {
+        id: transaction.categoryId || 'uncategorized',
+        name: transaction.categoryName || 'Uncategorized',
+        color: transaction.categoryColor || '#6B7280',
+        createdAt: new Date().toISOString(),
+      };
     
     if (user) {
       downloadVoucher(transaction, user, category);
@@ -706,9 +713,12 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                   </TableHeader>
                   <TableBody>
                     {currentTransactions.map((transaction) => {
-                      const user = users.find(u => u.id === transaction.userId);
-                      const category = categories.find(c => c.id === transaction.categoryId);
-                      const account = accounts.find(a => a.id === transaction.accountId);
+                      const user = users.find(u => u.id === transaction.userId)
+                        || users.find(u => transaction.userName && u.name.toLowerCase() === transaction.userName.toLowerCase());
+                      const category = categories.find(c => c.id === transaction.categoryId)
+                        || categories.find(c => transaction.categoryName && c.name.toLowerCase() === transaction.categoryName.toLowerCase());
+                      const account = accounts.find(a => a.id === transaction.accountId)
+                        || accounts.find(a => transaction.accountName && a.name.toLowerCase() === transaction.accountName.toLowerCase());
                       
                       return (
                         <TableRow key={transaction.id}>
@@ -778,6 +788,14 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                                 />
                                 {category.name}
                               </div>
+                            ) : transaction.categoryName ? (
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full" 
+                                  style={{ backgroundColor: transaction.categoryColor || '#6366f1' }}
+                                />
+                                {transaction.categoryName}
+                              </div>
                             ) : (
                               <span className="text-muted-foreground italic text-xs">Uncategorized</span>
                             )}
@@ -803,7 +821,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                               <span className="text-muted-foreground text-xs">Cash</span>
                             )}
                           </TableCell>
-                          <TableCell>{user?.name || 'Unknown'}</TableCell>
+                          <TableCell>{user?.name || transaction.userName || 'Unknown'}</TableCell>
                           <TableCell className={
                             transaction.type === 'income' ? 'text-green-600 font-semibold' : 
                             transaction.type === 'expense' ? 'text-red-600 font-semibold' : 

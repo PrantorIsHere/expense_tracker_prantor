@@ -54,9 +54,13 @@ export default function ReportsPage() {
         description: t.description ? String(t.description) : undefined,
         amount:      Number(t.amount ?? 0),
         type:        t.type as Transaction['type'],
-        categoryId:  String(t.category_id ?? t.categoryId ?? ''),
-        userId:      String(t.financial_user_id ?? t.userId ?? ''),
-        date:        String(t.date ?? ''),
+        categoryId:    String(t.category_id ?? t.categoryId ?? ''),
+        categoryName:  t.category_name ? String(t.category_name) : (t.categoryName ? String(t.categoryName) : undefined),
+        categoryColor: t.category_color ? String(t.category_color) : (t.categoryColor ? String(t.categoryColor) : undefined),
+        userId:        String(t.financial_user_id ?? t.userId ?? ''),
+        userName:      t.user_name ? String(t.user_name) : (t.userName ? String(t.userName) : undefined),
+        accountName:   t.account_name ? String(t.account_name) : undefined,
+        date:          String(t.date ?? ''),
         createdAt:   String(t.created_at ?? t.createdAt ?? ''),
         updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
       }));
@@ -151,7 +155,7 @@ export default function ReportsPage() {
   // Build per-category stats using categories from Settings
   const categoryStats = useMemo(() => {
     const stats = categories.map((cat) => {
-      const catTxs = transactions.filter((t) => t.categoryId === cat.id);
+      const catTxs = transactions.filter((t) => t.categoryId === cat.id || (t.categoryName && t.categoryName.toLowerCase() === cat.name.toLowerCase()));
       const income = catTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
       const expense = catTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
       const count = catTxs.length;
@@ -167,7 +171,8 @@ export default function ReportsPage() {
     });
 
     const knownCategoryIds = new Set(categories.map(c => c.id));
-    const uncategorizedTxs = transactions.filter(t => !t.categoryId || !knownCategoryIds.has(t.categoryId));
+    const knownCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
+    const uncategorizedTxs = transactions.filter(t => (!t.categoryId && !t.categoryName) || (!knownCategoryIds.has(t.categoryId) && !knownCategoryNames.has((t.categoryName || '').toLowerCase())));
     if (uncategorizedTxs.length > 0) {
       const income = uncategorizedTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
       const expense = uncategorizedTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);

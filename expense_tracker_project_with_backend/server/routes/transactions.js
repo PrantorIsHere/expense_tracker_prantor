@@ -15,26 +15,72 @@ router.get('/', authenticateToken, (req, res) => {
       .filter({ user_id: userId })
       .value()
       .map(t => {
-        const category = t.category_id
-          ? db.get('categories').find({ id: t.category_id }).value()
+        const catId = t.category_id || t.categoryId;
+        let category = catId
+          ? db.get('categories').find(c => c.id === catId).value()
           : null;
-        const accId = t.account_id || t.accountId;
-        const account = accId && db.has('accounts').value()
-          ? db.get('accounts').find({ id: accId }).value()
+        if (!category && (t.category_name || t.categoryName || t.category)) {
+          const cName = String(t.category_name || t.categoryName || t.category).trim().toLowerCase();
+          category = db.get('categories')
+            .find(c => (c.user_id === null || c.user_id === userId) && c.name.toLowerCase() === cName)
+            .value();
+        }
+
+        const fUserId = t.financial_user_id || t.financialUserId || t.userId;
+        let fUser = fUserId && db.has('financial_users').value()
+          ? db.get('financial_users').find(u => u.id === fUserId).value()
           : null;
+        if (!fUser && (t.user_name || t.userName || t.user)) {
+          const uName = String(t.user_name || t.userName || t.user).trim().toLowerCase();
+          fUser = db.get('financial_users')
+            .find(u => u.user_id === userId && u.name.toLowerCase() === uName)
+            .value();
+        }
+
+        const accId = t.account_id || t.accountId || t.from_account_id || t.fromAccountId;
+        let account = accId && db.has('accounts').value()
+          ? db.get('accounts').find(a => a.id === accId).value()
+          : null;
+        if (!account && (t.account_name || t.accountName || t.account)) {
+          const aName = String(t.account_name || t.accountName || t.account).trim().toLowerCase();
+          account = db.get('accounts')
+            .find(a => a.user_id === userId && a.name.toLowerCase() === aName)
+            .value();
+        }
+
         const toAccId = t.to_account_id || t.toAccountId;
-        const toAccount = toAccId && db.has('accounts').value()
-          ? db.get('accounts').find({ id: toAccId }).value()
+        let toAccount = toAccId && db.has('accounts').value()
+          ? db.get('accounts').find(a => a.id === toAccId).value()
           : null;
+        if (!toAccount && (t.to_account_name || t.toAccountName)) {
+          const toName = String(t.to_account_name || t.toAccountName).trim().toLowerCase();
+          toAccount = db.get('accounts')
+            .find(a => a.user_id === userId && a.name.toLowerCase() === toName)
+            .value();
+        }
+
+        let fromAccName = account ? account.name : (t.account_name || t.accountName || (typeof t.account === 'string' ? t.account : null));
+        let toAccName = toAccount ? toAccount.name : (t.to_account_name || t.toAccountName || null);
+
+        if (t.type === 'transfer' && (!fromAccName || !toAccName) && typeof t.title === 'string' && t.title.includes('→')) {
+          const parts = t.title.replace(/^Transfer:\s*/i, '').split('→');
+          if (!fromAccName && parts[0]) fromAccName = parts[0].trim();
+          if (!toAccName && parts[1]) toAccName = parts[1].trim();
+        }
+
         return {
           ...t,
-          category_name:   category ? category.name  : null,
-          category_color:  category ? category.color : null,
-          account_id:      accId || null,
-          account_name:    account ? account.name : null,
-          account_type:    account ? account.type : null,
-          to_account_id:   toAccId || null,
-          to_account_name: toAccount ? toAccount.name : null,
+          category_id:       category ? category.id : (catId || null),
+          category_name:     category ? category.name : (t.category_name || t.categoryName || t.category || null),
+          category_color:    category ? category.color : (t.category_color || null),
+          financial_user_id: fUser ? fUser.id : (fUserId || null),
+          userId:            fUser ? fUser.id : (fUserId || null),
+          user_name:         fUser ? fUser.name : (t.user_name || t.userName || null),
+          account_id:        account ? account.id : (accId || null),
+          account_name:      fromAccName,
+          account_type:      account ? account.type : (t.account_type || null),
+          to_account_id:     toAccount ? toAccount.id : (toAccId || null),
+          to_account_name:   toAccName,
         };
       })
       .sort((a, b) => {
@@ -74,10 +120,14 @@ router.post('/', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Required fields missing' });
     }
 
-    // Check voucher_id uniqueness scoped to this user; if auto-generated pattern collides, allocate next available
+    // Check voucher_id uniqueness scoped to this user (handling both voucher_id and voucherId); if pattern collides, allocate next available
     let finalVoucherId = voucher_id;
-    const duplicate = db.get('transactions').find({ user_id: req.user.id, voucher_id: finalVoucherId }).value();
-    if (duplicate) {
+    const isDuplicate = (vid) => db.get('transactions').some(t => 
+      (t.user_id === req.user.id || t.userId === req.user.id) && 
+      (t.voucher_id === vid || t.voucherId === vid)
+    ).value();
+
+    if (isDuplicate(finalVoucherId)) {
       const m = String(finalVoucherId).match(/^(\d{4}-\d{2}-\d{2})-\d+$/);
       if (m) {
         finalVoucherId = allocateNextVoucherId(req.user.id, m[1]);
@@ -89,18 +139,37 @@ router.post('/', authenticateToken, (req, res) => {
     const now = new Date().toISOString();
     const targetAccountId = account_id || accountId || null;
     const targetToAccountId = to_account_id || toAccountId || null;
+
+    // Resolve category name and color dynamically
+    let catRecord = category_id ? db.get('categories').find(c => c.id === category_id).value() : null;
+    // Resolve financial user name dynamically
+    let userRecord = financial_user_id ? db.get('financial_users').find(u => u.id === financial_user_id).value() : null;
+    // Resolve account name dynamically
+    let accRecord = targetAccountId ? db.get('accounts').find(a => a.id === targetAccountId).value() : null;
+    let toAccRecord = targetToAccountId ? db.get('accounts').find(a => a.id === targetToAccountId).value() : null;
+
     const newTx = {
       id:                uuidv4(),
       user_id:           req.user.id,
+      userId:            req.user.id,
       voucher_id:        finalVoucherId,
+      voucherId:         finalVoucherId,
       title,
       description:       description || null,
       amount:            parseFloat(amount),
       type,
       category_id:       category_id || null,
+      categoryId:        category_id || null,
+      category_name:     catRecord ? catRecord.name : (req.body.category_name || req.body.categoryName || null),
+      category_color:    catRecord ? catRecord.color : (req.body.category_color || req.body.categoryColor || null),
       financial_user_id: financial_user_id || null,
+      user_name:         userRecord ? userRecord.name : (req.body.user_name || req.body.userName || null),
       account_id:        targetAccountId,
+      accountId:         targetAccountId,
+      account_name:      accRecord ? accRecord.name : (req.body.account_name || req.body.accountName || null),
       to_account_id:     targetToAccountId,
+      toAccountId:       targetToAccountId,
+      to_account_name:   toAccRecord ? toAccRecord.name : (req.body.to_account_name || req.body.toAccountName || null),
       loan_id:           req.body.loan_id || null,
       date,
       created_at:        now,

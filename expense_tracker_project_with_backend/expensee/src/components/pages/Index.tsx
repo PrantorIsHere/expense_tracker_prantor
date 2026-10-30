@@ -76,6 +76,8 @@ export default function Index() {
       amount:        Number(t.amount ?? 0),
       type:          t.type as Transaction['type'],
       categoryId:    String(t.category_id ?? t.categoryId ?? ''),
+      categoryName:  t.category_name ? String(t.category_name) : (t.categoryName ? String(t.categoryName) : undefined),
+      categoryColor: t.category_color ? String(t.category_color) : (t.categoryColor ? String(t.categoryColor) : undefined),
       accountId:     t.account_id ? String(t.account_id) : undefined,
       accountName:   t.account_name ? String(t.account_name) : undefined,
       accountType:   t.account_type ? String(t.account_type) : undefined,
@@ -83,6 +85,7 @@ export default function Index() {
       toAccountName: t.to_account_name ? String(t.to_account_name) : (t.toAccountName ? String(t.toAccountName) : undefined),
       loanId:        t.loan_id ? String(t.loan_id) : (t.loanId ? String(t.loanId) : undefined),
       userId:        String(t.financial_user_id ?? t.userId ?? ''),
+      userName:      t.user_name ? String(t.user_name) : (t.userName ? String(t.userName) : undefined),
       date:          String(t.date ?? ''),
       createdAt:     String(t.created_at ?? t.createdAt ?? ''),
       updatedAt:     String(t.updated_at ?? t.updatedAt ?? ''),
@@ -692,7 +695,7 @@ export default function Index() {
                                     </p>
                                   ) : (
                                     <p className="text-sm text-muted-foreground">
-                                      {users.find(u => u.id === transaction.userId)?.name || 'Unknown'} • {categories.find(c => c.id === transaction.categoryId)?.name || 'Uncategorized'}
+                                      {(users.find(u => u.id === transaction.userId)?.name || users.find(u => transaction.userName && u.name.toLowerCase() === transaction.userName.toLowerCase())?.name || transaction.userName || 'Unknown')} • {(categories.find(c => c.id === transaction.categoryId)?.name || categories.find(c => transaction.categoryName && c.name.toLowerCase() === transaction.categoryName.toLowerCase())?.name || transaction.categoryName || 'Uncategorized')}
                                       {transaction.accountName ? ` • ${transaction.accountName}` : ''}
                                     </p>
                                   )}

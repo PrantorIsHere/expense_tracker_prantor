@@ -39,7 +39,10 @@ export interface Transaction {
   amount: number;
   type: 'income' | 'expense' | 'loan_given' | 'loan_taken' | 'loan_received' | 'loan_repaid' | 'transfer';
   categoryId: string;
+  categoryName?: string;
+  categoryColor?: string;
   userId: string;
+  userName?: string;
   accountId?: string;
   accountName?: string;
   accountType?: string;

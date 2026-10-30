@@ -193,8 +193,8 @@ export const generateMonthlyStatementPDF = (
   const tableData = transactions
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .map(t => {
-      const user = users.find(u => u.id === t.userId);
-      const category = categories.find(c => c.id === t.categoryId);
+      const user = users.find(u => u.id === t.userId) || users.find(u => t.userName && u.name.toLowerCase() === t.userName.toLowerCase());
+      const category = categories.find(c => c.id === t.categoryId) || categories.find(c => t.categoryName && c.name.toLowerCase() === t.categoryName.toLowerCase());
       const transDate = new Date(t.date);
 
       const typeLabel =
@@ -210,8 +210,8 @@ export const generateMonthlyStatementPDF = (
         formatDateDhaka(transDate),
         t.voucherId,
         t.title,
-        category?.name || 'N/A',
-        user?.name || 'N/A',
+        category?.name || t.categoryName || 'N/A',
+        user?.name || t.userName || 'N/A',
         isCashIn(t.type) ? formatAmount(t.amount) : '-',
         isCashOut(t.type) ? formatAmount(t.amount) : '-',
         typeLabel
