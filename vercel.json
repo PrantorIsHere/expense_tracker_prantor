@@ -1,0 +1,38 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "root": "expense_tracker_project_with_backend/expensee",
+      "framework": "vite",
+      "installCommand": "pnpm install --no-frozen-lockfile --force",
+      "buildCommand": "pnpm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    "backend": {
+      "root": "expense_tracker_project_with_backend/server",
+      "framework": "express",
+      "entrypoint": "app.js",
+      "installCommand": "pnpm install --no-frozen-lockfile --force"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
+    }
+  ]
+}
