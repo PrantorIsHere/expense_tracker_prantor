@@ -4,7 +4,13 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+if (!process.env.VERCEL) require('dotenv').config({ path: path.join(__dirname, '.env') });
+// Derive an app-specific signing key from the connected server-only Supabase secret.
+if (!process.env.JWT_SECRET && process.env.SUPABASE_JWT_SECRET) {
+  process.env.JWT_SECRET = require('node:crypto').createHmac('sha256', process.env.SUPABASE_JWT_SECRET)
+    .update('expense-tracker-prantor:authentication:v1').digest('hex');
+}
+if (process.env.VERCEL && !process.env.JWT_SECRET) throw new Error('JWT_SECRET is required');
 
 const app = express();
 const allowedOriginPatterns = [
@@ -14,7 +20,7 @@ const allowedOriginPatterns = [
   /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
   /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+:\d+$/,
 ];
-const configuredOrigins = (process.env.CORS_ORIGIN || '')
+const configuredOrigins = (process.env.CORS_ORIGIN || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : ''))
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -34,6 +40,8 @@ app.use(morgan('combined'));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use('/api', require('./config/database').middleware);
 
 app.get('/api/health', (req, res) => res.json({ status: 'OK', ts: new Date().toISOString() }));
 
@@ -60,4 +68,7 @@ app.use('*', (req,res) => res.status(404).json({ error: 'Route not found' }));
 
 const PORT = process.env.API_PORT || 3001;
 const HOST = process.env.API_HOST || '0.0.0.0';
-app.listen(PORT, HOST, () => console.log(`API listening on http://${HOST}:${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, HOST, () => console.log(`API listening on http://${HOST}:${PORT}`));
+}
+module.exports = app;
