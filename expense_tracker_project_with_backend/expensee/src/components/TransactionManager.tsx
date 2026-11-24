@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { getUsers, getCategories, getAccounts, generateVoucherId, formatCurrency } from '@/lib/storage';
 import { apiClient } from '@/lib/api';
 import { downloadVoucher } from '@/lib/voucherGenerator';
-import { downloadMonthlyStatement } from '@/lib/monthlyStatementPDF';
+import { downloadStatementPDF } from '@/lib/monthlyStatementPDF';
+import { createStatementPeriod, createMonthlyPeriod, selectStatementTransactions } from '@/lib/statementPeriod';
 import {
   createDhakaTimestamp,
   formatDateDhaka,
@@ -47,7 +48,10 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
 
-  // Monthly statement state
+  // Statement export is independent of table search, filters and pagination.
+  const [statementMode, setStatementMode] = useState('month');
+  const [statementFrom, setStatementFrom] = useState(() => getDhakaDateInputValue().slice(0, 7) + '-01');
+  const [statementTo, setStatementTo] = useState(() => getDhakaDateInputValue());
   const [selectedMonth, setSelectedMonth] = useState(getDhakaMonthIndex().toString());
   const [selectedYear, setSelectedYear] = useState(getDhakaYear().toString());
 
@@ -209,22 +213,20 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
     }
   };
 
-  const handleDownloadMonthlyStatement = () => {
-    const month = parseInt(selectedMonth);
-    const year = parseInt(selectedYear);
-    
-    // Filter transactions for selected month and year
-    const monthlyTransactions = transactions.filter(t => {
-      const transDate = new Date(t.date);
-      return transDate.getMonth() === month && transDate.getFullYear() === year;
-    });
-
-    if (monthlyTransactions.length === 0) {
-      alert('No transactions found for the selected month and year.');
-      return;
+  const handleDownloadStatement = () => {
+    try {
+      const period = statementMode === 'range'
+        ? createStatementPeriod(statementFrom, statementTo)
+        : createMonthlyPeriod(Number(selectedYear), Number(selectedMonth));
+      const selectedTransactions = selectStatementTransactions(transactions, period);
+      if (selectedTransactions.length === 0) {
+        alert('No transactions found for the selected statement period.');
+        return;
+      }
+      downloadStatementPDF(selectedTransactions, users, categories, period);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to generate statement PDF. Please try again.');
     }
-
-    downloadMonthlyStatement(monthlyTransactions, users, categories, month, year);
   };
 
   const getFilteredTransactions = () => {
@@ -511,17 +513,42 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
         </Dialog>
       </div>
 
-      {/* Monthly Statement Download */}
+      {/* Statement Download */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
             <FileText className="mr-2 h-4 w-4" />
-            Download Monthly Statement
+            Download Statement
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-end gap-4">
-            <div className="flex-1">
+          <div className="mb-4 max-w-sm space-y-1">
+            <Label htmlFor="statementPeriod">Statement Period</Label>
+            <Select value={statementMode} onValueChange={setStatementMode}>
+              <SelectTrigger id="statementPeriod"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="month">Monthly</SelectItem>
+                <SelectItem value="range">Custom Date Range</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
+            {statementMode === 'range' ? (
+              <>
+                <div className="min-w-0 space-y-1">
+                  <Label htmlFor="statementFrom">From Date</Label>
+                  <Input id="statementFrom" type="date" value={statementFrom} max={statementTo || undefined}
+                    onChange={event => setStatementFrom(event.target.value)} />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <Label htmlFor="statementTo">To Date</Label>
+                  <Input id="statementTo" type="date" value={statementTo} min={statementFrom || undefined}
+                    onChange={event => setStatementTo(event.target.value)} />
+                </div>
+              </>
+            ) : (
+              <>
+            <div className="min-w-0 space-y-1">
               <Label htmlFor="statementMonth">Month</Label>
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger id="statementMonth">
@@ -536,7 +563,7 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
+            <div className="min-w-0 space-y-1">
               <Label htmlFor="statementYear">Year</Label>
               <Select value={selectedYear} onValueChange={setSelectedYear}>
                 <SelectTrigger id="statementYear">
@@ -551,13 +578,15 @@ export default function TransactionManager({ onDataChange }: TransactionManagerP
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleDownloadMonthlyStatement} className="flex-shrink-0">
+              </>
+            )}
+            <Button onClick={handleDownloadStatement} className="sm:col-span-2 lg:col-span-1">
               <Download className="mr-2 h-4 w-4" />
               Download Statement PDF
             </Button>
           </div>
           <p className="text-sm text-muted-foreground mt-2">
-            Generate a bank-style monthly statement for all transactions in the selected period.
+            Choose a month or custom date range. The PDF includes all transactions in the period, including both From and To dates.
           </p>
         </CardContent>
       </Card>

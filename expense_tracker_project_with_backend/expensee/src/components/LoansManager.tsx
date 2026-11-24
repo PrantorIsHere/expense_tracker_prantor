@@ -360,7 +360,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
               Add Loan
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[calc(100%_-_2rem)] max-w-md max-h-[calc(100dvh_-_2rem)] overflow-y-auto rounded-lg p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle>Add New Loan</DialogTitle>
             </DialogHeader>
@@ -386,8 +386,8 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="min-w-0">
                   <Label htmlFor="loanAmount">Amount (৳) *</Label>
                   <Input
                     id="loanAmount"
@@ -400,14 +400,16 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <Label htmlFor="loanType">Type *</Label>
                   <Select
                     value={formData.type}
                     onValueChange={(value: 'given' | 'taken') => setFormData({ ...formData, type: value })}
                   >
-                    <SelectTrigger id="loanType">
-                      <SelectValue placeholder="Select type" />
+                    <SelectTrigger id="loanType" className="w-full min-w-0">
+                      <SelectValue placeholder="Select type">
+                        {formData.type === 'given' ? 'Loan Given' : 'Loan Taken'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="given">
@@ -460,7 +462,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
                   value={formData.accountId || 'none'}
                   onValueChange={(val) => setFormData({ ...formData, accountId: val === 'none' ? '' : val })}
                 >
-                  <SelectTrigger id="loanAccount">
+                  <SelectTrigger id="loanAccount" className="min-w-0 [&>span]:truncate">
                     <SelectValue placeholder="Select account (optional)" />
                   </SelectTrigger>
                   <SelectContent>

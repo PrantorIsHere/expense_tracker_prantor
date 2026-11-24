@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Transaction, User, Category } from '@/types';
 import { getUserSettingsSync } from './storage';
+import { createMonthlyPeriod, selectStatementTransactions, type StatementPeriod } from './statementPeriod';
 
 type RGBColor = [number, number, number];
 
@@ -72,13 +73,13 @@ function getCurrentYear(): number {
   return parseInt(dhakaYear);
 }
 
-export const generateMonthlyStatementPDF = (
+export const generateStatementPDF = (
   transactions: Transaction[],
   users: User[],
   categories: Category[],
-  month: number,
-  year: number
+  period: StatementPeriod
 ) => {
+  const statementTransactions = selectStatementTransactions(transactions, period);
   // A4 size portrait
   const pdf = new jsPDF({
     orientation: 'portrait',
@@ -120,12 +121,11 @@ export const generateMonthlyStatementPDF = (
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(16);
   pdf.setTextColor(textDark[0], textDark[1], textDark[2]);
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   pdf.text(`TRANSACTION STATEMENT`, pageWidth / 2, 52, { align: 'center' });
   
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(12);
-  pdf.text(`${monthNames[month]} ${year}`, pageWidth / 2, 60, { align: 'center' });
+  pdf.text(period.label, pageWidth / 2, 60, { align: 'center' });
 
   // Statement Period Box
   const boxY = 68;
@@ -138,8 +138,8 @@ export const generateMonthlyStatementPDF = (
   pdf.text('Statement Period:', 20, boxY + 8);
   
   pdf.setFont('helvetica', 'normal');
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
+  const firstDay = period.from;
+  const lastDay = period.to;
   pdf.text(`From: ${formatDateDhaka(firstDay)}`, 20, boxY + 14);
   pdf.text(`To: ${formatDateDhaka(lastDay)}`, 80, boxY + 14);
   
@@ -152,8 +152,8 @@ export const generateMonthlyStatementPDF = (
   const isCashIn = (type: string) => type === 'income' || type === 'loan_taken' || type === 'loan_received';
   const isCashOut = (type: string) => type === 'expense' || type === 'loan_given' || type === 'loan_repaid';
 
-  const income = transactions.filter(t => isCashIn(t.type)).reduce((sum, t) => sum + t.amount, 0);
-  const expenses = transactions.filter(t => isCashOut(t.type)).reduce((sum, t) => sum + t.amount, 0);
+  const income = statementTransactions.filter(t => isCashIn(t.type)).reduce((sum, t) => sum + t.amount, 0);
+  const expenses = statementTransactions.filter(t => isCashOut(t.type)).reduce((sum, t) => sum + t.amount, 0);
   const netBalance = income - expenses;
 
   // Summary Section
@@ -190,7 +190,7 @@ export const generateMonthlyStatementPDF = (
   const tableStartY = summaryY + 32;
   
   // Prepare table data
-  const tableData = transactions
+  const tableData = [...statementTransactions]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .map(t => {
       const user = users.find(u => u.id === t.userId) || users.find(u => t.userName && u.name.toLowerCase() === t.userName.toLowerCase());
@@ -244,10 +244,10 @@ export const generateMonthlyStatementPDF = (
     },
     columnStyles: {
       0: { cellWidth: 20, halign: 'center', valign: 'middle' },
-      1: { cellWidth: 24, halign: 'center', fontSize: 7, valign: 'middle' },
-      2: { cellWidth: 38, halign: 'left', valign: 'middle' },
-      3: { cellWidth: 24, halign: 'left', valign: 'middle' },
-      4: { cellWidth: 22, halign: 'left', valign: 'middle' },
+      1: { cellWidth: 22, halign: 'center', fontSize: 7, valign: 'middle' },
+      2: { cellWidth: 34, halign: 'left', valign: 'middle' },
+      3: { cellWidth: 22, halign: 'left', valign: 'middle' },
+      4: { cellWidth: 20, halign: 'left', valign: 'middle' },
       5: { cellWidth: 22, halign: 'right', textColor: [0, 128, 0], valign: 'middle' },
       6: { cellWidth: 22, halign: 'right', textColor: [255, 0, 0], valign: 'middle' },
       7: { cellWidth: 18, halign: 'center', fontSize: 7, valign: 'middle' }
@@ -267,7 +267,7 @@ export const generateMonthlyStatementPDF = (
         
         pdf.setFont('helvetica', 'normal');
         pdf.setFontSize(10);
-        pdf.text(`${monthNames[month]} ${year} Statement (Continued)`, pageWidth / 2, 18, { align: 'center' });
+        pdf.text(`${period.label} Statement (Continued)`, pageWidth / 2, 18, { align: 'center' });
       }
       
       // Footer on each page
@@ -382,14 +382,23 @@ export const generateMonthlyStatementPDF = (
   return pdf;
 };
 
-export const downloadMonthlyStatement = (
+export const generateMonthlyStatementPDF = (
   transactions: Transaction[],
   users: User[],
   categories: Category[],
   month: number,
   year: number
 ) => {
-  const pdf = generateMonthlyStatementPDF(transactions, users, categories, month, year);
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  pdf.save(`statement-${monthNames[month]}-${year}.pdf`);
+  return generateStatementPDF(transactions, users, categories, createMonthlyPeriod(year, month));
 };
+
+export const downloadStatementPDF = (
+  transactions: Transaction[], users: User[], categories: Category[], period: StatementPeriod
+) => {
+  const pdf = generateStatementPDF(transactions, users, categories, period);
+  pdf.save(period.filename);
+};
+
+export const downloadMonthlyStatement = (
+  transactions: Transaction[], users: User[], categories: Category[], month: number, year: number
+) => downloadStatementPDF(transactions, users, categories, createMonthlyPeriod(year, month));
