@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ControlPanel, PageBody } from '@/components/erp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -292,8 +293,9 @@ export default function AdditionalInfoTab() {
   };
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold">Additional Info</h1>
+    <>
+      <ControlPanel title="Additional info" />
+      <PageBody>
 
       {/* SECTION 1: History of Transaction */}
       <Card>
@@ -654,6 +656,7 @@ export default function AdditionalInfoTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </PageBody>
+    </>
   );
 }

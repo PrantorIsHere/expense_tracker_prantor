@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar as ErpAvatar, ControlPanel, PageBody } from '@/components/erp';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -32,9 +32,11 @@ import { Users, UserPlus, Edit2, Trash2, DollarSign, Shield, ShieldCheck, Calend
 
 interface UsersTabProps {
   onDataChange: () => void;
+  /** Rendered inside another page (Settings): no control panel or page padding. */
+  embedded?: boolean;
 }
 
-export default function UsersTab({ onDataChange }: UsersTabProps) {
+export default function UsersTab({ onDataChange, embedded }: UsersTabProps) {
   const [financialUsers, setFinancialUsers] = useState<User[]>([]);
   const [accountUsers, setAccountUsers] = useState<AuthUser[]>([]);
   const [isAddFinancialDialogOpen, setIsAddFinancialDialogOpen] = useState(false);
@@ -256,7 +258,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground mx-auto mb-4"></div>
           <p>Loading users...</p>
         </div>
       </div>
@@ -264,16 +266,9 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Users className="h-6 w-6" />
-            User Management
-          </h2>
-          <p className="text-gray-600">Manage account users and financial transaction users</p>
-        </div>
-      </div>
+    <>
+      {!embedded && <ControlPanel title="Users" />}
+      <PageBody className={embedded ? 'p-0 md:p-0' : undefined}>
 
       {error && (
         <Alert variant="destructive">
@@ -282,7 +277,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
       )}
 
       <Tabs defaultValue="financial" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="w-full">
           <TabsTrigger value="financial">
             <DollarSign className="mr-2 h-4 w-4" />
             Financial Users
@@ -296,17 +291,14 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
         </TabsList>
 
         <TabsContent value="financial" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">Financial Users</h3>
-              <p className="text-gray-600">Manage people involved in your financial transactions</p>
-            </div>
-            
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">People you tag on transactions and loans.</p>
+
             <Dialog open={isAddFinancialDialogOpen} onOpenChange={setIsAddFinancialDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Add Financial User
+                <Button size="sm">
+                  <UserPlus className="h-4 w-4" aria-hidden />
+                  New financial user
                 </Button>
               </DialogTrigger>
               <DialogContent>
@@ -389,12 +381,9 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
                         <TableRow key={user.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                              </Avatar>
+                              <ErpAvatar name={user.name} />
                               <div>
                                 <p className="font-medium">{user.name}</p>
-                                <p className="text-sm text-gray-500">ID: {user.id}</p>
                               </div>
                             </div>
                           </TableCell>
@@ -404,10 +393,10 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
                                 <p className="text-sm">{user.email}</p>
                               )}
                               {user.phone && (
-                                <p className="text-sm text-gray-600">{user.phone}</p>
+                                <p className="text-sm text-muted-foreground">{user.phone}</p>
                               )}
                               {!user.email && !user.phone && (
-                                <p className="text-sm text-gray-400">No contact info</p>
+                                <p className="text-sm text-muted-foreground">No contact info</p>
                               )}
                             </div>
                           </TableCell>
@@ -456,7 +445,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
                   </TableBody>
                 </Table>
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No financial users created yet</p>
                   <p className="text-sm">Add users to track transactions for different people</p>
@@ -523,17 +512,14 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
 
         {isAdminUser && (
           <TabsContent value="accounts" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold">Account Users</h3>
-                <p className="text-gray-600">Manage user accounts who can log into the expense tracker</p>
-              </div>
-              
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">People who can sign in to this app.</p>
+
               <Dialog open={isAddAccountDialogOpen} onOpenChange={setIsAddAccountDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button>
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    Add Account User
+                  <Button size="sm">
+                    <UserPlus className="h-4 w-4" aria-hidden />
+                    New account user
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
@@ -640,12 +626,9 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
                         <TableRow key={user.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback>{getInitials(user.username)}</AvatarFallback>
-                              </Avatar>
+                              <ErpAvatar name={user.username} />
                               <div>
                                 <p className="font-medium">{user.username}</p>
-                                <p className="text-sm text-gray-500">ID: {user.id}</p>
                               </div>
                             </div>
                           </TableCell>
@@ -671,7 +654,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Calendar className="h-4 w-4" />
                               {new Date(user.createdAt).toLocaleDateString()}
                             </div>
@@ -691,7 +674,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
                     </TableBody>
                   </Table>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-muted-foreground">
                     <Shield className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>No account users found</p>
                   </div>
@@ -701,6 +684,7 @@ export default function UsersTab({ onDataChange }: UsersTabProps) {
           </TabsContent>
         )}
       </Tabs>
-    </div>
+      </PageBody>
+    </>
   );
 }

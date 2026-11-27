@@ -54,6 +54,8 @@ type AccountPayload = {
   initial_balance?: number;
   color?: string;
   icon?: string;
+  /** Name from the bank directory (src/data/banks.json); drives the account's logo. */
+  bank_name?: string | null;
 };
 
 type FinancialUserPayload = {

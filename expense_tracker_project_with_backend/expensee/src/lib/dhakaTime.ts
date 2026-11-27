@@ -68,9 +68,12 @@ export const formatDateDhaka = (value: string | Date): string => {
 };
 
 export const getStoredDateInputValue = (value: string): string => {
-  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+  // Date-only values and timestamps already written in Dhaka time carry the Dhaka day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value) || /^\d{4}-\d{2}-\d{2}T[^Z]*\+06:00$/.test(value)) {
     return value.slice(0, 10);
   }
 
-  return getDhakaDateInputValue(new Date(value));
+  // UTC ("...Z") and other offsets must be converted, or late-evening rows land on the previous day.
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? getDhakaDateInputValue(date) : value.slice(0, 10);
 };

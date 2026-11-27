@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import { AccountAvatar, ControlPanel } from '@/components/erp';
+import BankPicker, { type BankChoice } from '@/components/BankPicker';
+import { findBankById, matchBank } from '@/lib/bankDirectory';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,6 +86,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     accountNumber: '',
     initialBalance: '',
     color: '#4ECDC4',
+    bankId: '',
   });
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [editAccountData, setEditAccountData] = useState({
@@ -91,7 +95,21 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
     accountNumber: '',
     initialBalance: '',
     color: '#4ECDC4',
+    bankId: '',
   });
+
+  /**
+   * Applies a bank picker choice to an account form: fills the account name when it is
+   * empty or still the previous bank's name, and sets the type to match.
+   */
+  const applyBankChoice = <T extends { name: string; type: Account['type']; bankId: string }>(form: T, choice: BankChoice): T => {
+    const previous = findBankById(form.bankId);
+    const nameIsAuto = !form.name.trim() || form.name === previous?.short || (form.bankId === 'cash' && form.name === 'Cash');
+    if (choice.kind === 'cash') return { ...form, bankId: 'cash', type: 'cash', name: nameIsAuto ? 'Cash' : form.name };
+    if (choice.kind === 'other') return { ...form, bankId: '', name: choice.name || form.name };
+    return { ...form, bankId: choice.bank.id, type: choice.bank.type, name: nameIsAuto ? choice.bank.short : form.name };
+  };
+  const bankNameFor = (bankId: string) => findBankById(bankId)?.name ?? null;
 
   // Transfer state
   const [transferData, setTransferData] = useState({
@@ -269,6 +287,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
         account_number: newAccountData.accountNumber.trim() || null,
         initial_balance: parseFloat(newAccountData.initialBalance) || 0,
         color: newAccountData.color,
+        bank_name: bankNameFor(newAccountData.bankId),
       });
       setNewAccountData({
         name: '',
@@ -276,6 +295,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
         accountNumber: '',
         initialBalance: '',
         color: '#4ECDC4',
+        bankId: '',
       });
       setError('');
       setMessage('Account added successfully!');
@@ -296,6 +316,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
       accountNumber: acc.accountNumber || '',
       initialBalance: String(acc.initialBalance ?? 0),
       color: acc.color || '#4ECDC4',
+      bankId: matchBank(acc.name, acc.bankName)?.id ?? (acc.type === 'cash' ? 'cash' : ''),
     });
   };
 
@@ -312,6 +333,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
         account_number: editAccountData.accountNumber.trim() || null,
         initial_balance: parseFloat(editAccountData.initialBalance) || 0,
         color: editAccountData.color,
+        bank_name: bankNameFor(editAccountData.bankId),
       });
       setEditingAccount(null);
       setError('');
@@ -465,31 +487,33 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
   };
 
   return (
-    <div className="space-y-6">
-      <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="general">
-            <Settings className="mr-2 h-4 w-4" />
+    <>
+      <ControlPanel title="Settings" />
+      <Tabs defaultValue="general" orientation="vertical" className="flex flex-col md:flex-row">
+        <TabsList className="h-auto shrink-0 overflow-x-auto bg-card px-2 pt-2 md:min-h-[calc(100vh-6.5rem)] md:w-56 md:flex-col md:items-stretch md:gap-0.5 md:border-b-0 md:border-r md:p-2">
+          <TabsTrigger value="general" className="md:w-full md:justify-start md:rounded-md md:border-transparent md:mb-0 md:data-[state=active]:border-transparent md:data-[state=active]:bg-accent md:data-[state=active]:text-accent-foreground">
+            <Settings className="h-4 w-4" />
             General
           </TabsTrigger>
-          <TabsTrigger value="accounts">
-            <Landmark className="mr-2 h-4 w-4" />
+          <TabsTrigger value="accounts" className="md:w-full md:justify-start md:rounded-md md:border-transparent md:mb-0 md:data-[state=active]:border-transparent md:data-[state=active]:bg-accent md:data-[state=active]:text-accent-foreground">
+            <Landmark className="h-4 w-4" />
             Accounts
           </TabsTrigger>
-          <TabsTrigger value="categories">
-            <Tags className="mr-2 h-4 w-4" />
+          <TabsTrigger value="categories" className="md:w-full md:justify-start md:rounded-md md:border-transparent md:mb-0 md:data-[state=active]:border-transparent md:data-[state=active]:bg-accent md:data-[state=active]:text-accent-foreground">
+            <Tags className="h-4 w-4" />
             Categories
           </TabsTrigger>
-          <TabsTrigger value="users">
-            <Users className="mr-2 h-4 w-4" />
+          <TabsTrigger value="users" className="md:w-full md:justify-start md:rounded-md md:border-transparent md:mb-0 md:data-[state=active]:border-transparent md:data-[state=active]:bg-accent md:data-[state=active]:text-accent-foreground">
+            <Users className="h-4 w-4" />
             Users
           </TabsTrigger>
-          <TabsTrigger value="data">
-            <Download className="mr-2 h-4 w-4" />
+          <TabsTrigger value="data" className="md:w-full md:justify-start md:rounded-md md:border-transparent md:mb-0 md:data-[state=active]:border-transparent md:data-[state=active]:bg-accent md:data-[state=active]:text-accent-foreground">
+            <Download className="h-4 w-4" />
             Data
           </TabsTrigger>
         </TabsList>
 
+        <div className="min-w-0 flex-1 space-y-4 p-4 md:p-6">
         {message && (
           <Alert className="mt-4">
             <AlertDescription>{message}</AlertDescription>
@@ -517,7 +541,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                     onChange={(e) => setSettings({ ...settings, softwareName: e.target.value })}
                     placeholder="Enter software name"
                   />
-                  <p className="text-xs text-gray-500 mt-1">This name will appear on vouchers and reports</p>
+                  <p className="text-xs text-muted-foreground mt-1">This name will appear on vouchers and reports</p>
                 </div>
 
                 <div>
@@ -569,7 +593,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label htmlFor="notifications">Enable Notifications</Label>
-                    <p className="text-sm text-gray-600">Get notified about important events</p>
+                    <p className="text-sm text-muted-foreground">Get notified about important events</p>
                   </div>
                   <Switch
                     id="notifications"
@@ -581,7 +605,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label htmlFor="autoBackup">Auto Backup</Label>
-                    <p className="text-sm text-gray-600">Automatically backup data daily</p>
+                    <p className="text-sm text-muted-foreground">Automatically backup data daily</p>
                   </div>
                   <Switch
                     id="autoBackup"
@@ -600,78 +624,65 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
         </TabsContent>
 
         <TabsContent value="users">
-          <UsersTab onDataChange={onDataChange} />
+          <UsersTab onDataChange={onDataChange} embedded />
         </TabsContent>
 
         <TabsContent value="accounts" className="space-y-6">
           {/* Accounts Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200 dark:from-emerald-950/40 dark:to-teal-950/20 dark:border-emerald-800/50">
+            <Card>
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Total Funds (All Accounts)</p>
-                  <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100 mt-1">
+                  <p className="text-sm text-muted-foreground">Total Funds (All Accounts)</p>
+                  <p className="mt-1 text-xl font-semibold">
                     {formatCurrency(accounts.reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-300">
-                  <Wallet className="h-5 w-5" />
-                </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 dark:from-blue-950/40 dark:to-indigo-950/20 dark:border-blue-800/50">
+            <Card>
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Bank Accounts</p>
-                  <p className="text-xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                  <p className="text-sm text-muted-foreground">Bank Accounts</p>
+                  <p className="mt-1 text-xl font-semibold">
                     {formatCurrency(accounts.filter(a => a.type === 'bank' || a.type === 'savings').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-300">
-                  <Landmark className="h-5 w-5" />
-                </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 dark:from-amber-950/40 dark:to-orange-950/20 dark:border-amber-800/50">
+            <Card>
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Cash in Hand</p>
-                  <p className="text-xl font-bold text-amber-900 dark:text-amber-100 mt-1">
+                  <p className="text-sm text-muted-foreground">Cash in Hand</p>
+                  <p className="mt-1 text-xl font-semibold">
                     {formatCurrency(accounts.filter(a => a.type === 'cash').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-300">
-                  <Wallet className="h-5 w-5" />
-                </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200 dark:from-purple-950/40 dark:to-pink-950/20 dark:border-purple-800/50">
+            <Card>
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-purple-700 dark:text-purple-300">Mobile Wallets</p>
-                  <p className="text-xl font-bold text-purple-900 dark:text-purple-100 mt-1">
+                  <p className="text-sm text-muted-foreground">Mobile Wallets</p>
+                  <p className="mt-1 text-xl font-semibold">
                     {formatCurrency(accounts.filter(a => a.type === 'mobile_wallet').reduce((sum, a) => sum + (a.currentBalance ?? 0), 0))}
                   </p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center text-purple-600 dark:text-purple-300">
-                  <Smartphone className="h-5 w-5" />
                 </div>
               </CardContent>
             </Card>
           </div>
 
           {/* Transfer Money Between Accounts Card */}
-          <Card id="transfer-card" className="border-indigo-200 dark:border-indigo-800/60 bg-gradient-to-br from-indigo-50/50 via-background to-purple-50/30 dark:from-indigo-950/20 dark:via-background dark:to-purple-950/10 shadow-sm">
+          <Card id="transfer-card">
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-indigo-950 dark:text-indigo-100">
-                <ArrowLeftRight className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                Transfer Money Between Accounts
+              <CardTitle>
+                Transfer between accounts
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Move funds between your accounts (e.g. Bank to Cash, Bank to bKash, Cash to Bank) without altering your overall total balance.
+                Your total balance stays the same.
               </p>
             </CardHeader>
             <CardContent>
@@ -703,9 +714,9 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                         {accounts.map((acc) => (
                           <SelectItem key={acc.id} value={acc.id} disabled={acc.id === transferData.toAccountId}>
                             <div className="flex items-center justify-between w-full gap-2">
-                              <span>{acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')} {acc.name}</span>
+                              <span className="flex items-center gap-2"><AccountAvatar name={acc.name} bankName={acc.bankName} color={acc.color} size="xs" />{acc.name}</span>
                               <span className="text-xs text-muted-foreground font-mono">
-                                ৳{Number(acc.currentBalance ?? acc.balance ?? 0).toLocaleString()}
+                                {formatCurrency(Number(acc.currentBalance ?? acc.balance ?? 0))}
                               </span>
                             </div>
                           </SelectItem>
@@ -743,9 +754,9 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                         {accounts.map((acc) => (
                           <SelectItem key={acc.id} value={acc.id} disabled={acc.id === transferData.fromAccountId}>
                             <div className="flex items-center justify-between w-full gap-2">
-                              <span>{acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')} {acc.name}</span>
+                              <span className="flex items-center gap-2"><AccountAvatar name={acc.name} bankName={acc.bankName} color={acc.color} size="xs" />{acc.name}</span>
                               <span className="text-xs text-muted-foreground font-mono">
-                                ৳{Number(acc.currentBalance ?? acc.balance ?? 0).toLocaleString()}
+                                {formatCurrency(Number(acc.currentBalance ?? acc.balance ?? 0))}
                               </span>
                             </div>
                           </SelectItem>
@@ -756,7 +767,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
 
                   {/* Amount */}
                   <div className="md:col-span-2">
-                    <Label htmlFor="transferAmt" className="text-xs font-semibold">Amount (৳) *</Label>
+                    <Label htmlFor="transferAmt" className="text-xs font-semibold">Amount *</Label>
                     <Input
                       id="transferAmt"
                       type="number"
@@ -855,7 +866,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                         </div>
                       )}
                       <div className="text-muted-foreground italic">
-                        Total Balance: <span className="font-medium text-foreground">Intact (৳0 change)</span>
+                        Total Balance: <span className="font-medium text-foreground">unchanged</span>
                       </div>
                     </div>
                   );
@@ -867,18 +878,23 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
           {/* Add Account Card */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5 text-primary" />
-                Add Bank Account / Wallet
-              </CardTitle>
+              <CardTitle>New account</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                <div className="md:col-span-2">
-                  <Label htmlFor="accName">Account Name *</Label>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="accBank">Bank or wallet</Label>
+                  <BankPicker
+                    id="accBank"
+                    value={newAccountData.bankId}
+                    onChange={(choice) => setNewAccountData(applyBankChoice(newAccountData, choice))}
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="accName">Account name</Label>
                   <Input
                     id="accName"
-                    placeholder="e.g. MTB, BRAC Bank, bKash, Cash"
+                    placeholder="For example, MTB salary account"
                     value={newAccountData.name}
                     onChange={(e) => setNewAccountData({ ...newAccountData, name: e.target.value })}
                     onKeyPress={(e) => e.key === 'Enter' && handleAddAccount()}
@@ -930,8 +946,8 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
               </div>
 
               <Button onClick={handleAddAccount} className="mt-4 w-full md:w-auto">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Account
+                <Plus className="h-4 w-4" aria-hidden />
+                Add account
               </Button>
             </CardContent>
           </Card>
@@ -951,10 +967,18 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                 return (
                   <div
                     key={acc.id}
-                    className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-border gap-4"
+                    className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-muted dark:bg-gray-800/50 rounded-lg border border-border gap-4"
                   >
                     {isEditing ? (
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
+                      <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-5">
+                        <div>
+                          <Label className="text-xs">Bank or wallet</Label>
+                          <BankPicker
+                            value={editAccountData.bankId}
+                            onChange={(choice) => setEditAccountData(applyBankChoice(editAccountData, choice))}
+                            className="h-9"
+                          />
+                        </div>
                         <div>
                           <Label className="text-xs">Account Name</Label>
                           <Input
@@ -1002,12 +1026,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                       </div>
                     ) : (
                       <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center text-xl font-medium"
-                          style={{ backgroundColor: `${acc.color || '#4ECDC4'}20`, color: acc.color || '#4ECDC4' }}
-                        >
-                          {acc.icon || (acc.type === 'cash' ? '💵' : acc.type === 'mobile_wallet' ? '📱' : '🏦')}
-                        </div>
+                        <AccountAvatar name={acc.name} bankName={acc.bankName} color={acc.color} size="lg" />
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-base">{acc.name}</span>
@@ -1075,7 +1094,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
               })}
 
               {accounts.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   <Landmark className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No accounts configured yet. Add an account above.</p>
                 </div>
@@ -1178,7 +1197,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
               </div>
 
               {categories.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-muted-foreground">
                   <Tags className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No categories created yet</p>
                 </div>
@@ -1268,7 +1287,7 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
                 </Button>
               </div>
 
-              <div className="text-sm text-gray-600 space-y-2">
+              <div className="text-sm text-muted-foreground space-y-2">
                 <p><strong>Export Data:</strong> Download one JSON backup with everything: accounts (Cash, Bank, Mobile Wallets and opening balances), transactions and transfers, loans, goals, users, categories, settings, and additional info.</p>
                 <p><strong>Import Data:</strong> Upload a previously exported JSON file to restore all of it together. Account balances are recalculated exactly as they were.</p>
                 <p><strong>Reset All Data:</strong> Permanently delete all transactions, users, categories, and settings.</p>
@@ -1276,7 +1295,8 @@ export default function SettingsPage({ onDataChange }: SettingsPageProps) {
             </CardContent>
           </Card>
         </TabsContent>
+        </div>
       </Tabs>
-    </div>
+    </>
   );
 }

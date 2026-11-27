@@ -97,14 +97,10 @@ export default function LoginPage({ onAuthSuccess }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-page p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <DollarSign className="h-12 w-12 text-blue-600" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">Expense Tracker</h1>
-          <p className="text-gray-600 mt-2">Manage your finances with ease</p>
+          <h1 className="text-2xl font-semibold text-foreground">Expense Tracker</h1>
         </div>
 
         <Card>

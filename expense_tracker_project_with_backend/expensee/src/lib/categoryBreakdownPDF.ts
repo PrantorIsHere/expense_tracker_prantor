@@ -39,7 +39,7 @@ function formatAmount(n: number): string {
   return `${currency} ${n.toFixed(2)}`;
 }
 
-export function generateCategoryBreakdownPDF(transactions: Transaction[], categories: Category[]) {
+export function generateCategoryBreakdownPDF(transactions: Transaction[], categories: Category[], periodLabel = 'All time') {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -102,15 +102,15 @@ export function generateCategoryBreakdownPDF(transactions: Transaction[], catego
     cardX + 140,
     cardY + 25
   );
-  doc.text('Category-wise Breakdown (All Time)', cardX + 140, cardY + 50);
-  doc.text('All Transactions', cardX + 140, cardY + 65);
+  doc.text('Category-wise breakdown (income and expenses)', cardX + 140, cardY + 50);
+  doc.text(periodLabel, cardX + 140, cardY + 65);
 
   // Use the passed transactions and categories arrays directly
 
   const stats = categories.map((cat) => {
     const catTxs = transactions.filter((t) => t.categoryId === cat.id || (t.categoryName && t.categoryName.toLowerCase() === cat.name.toLowerCase()));
-    const income = catTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
-    const expense = catTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
+    const income = catTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expense = catTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
     const count = catTxs.length;
     return {
       id: cat.id,
@@ -127,8 +127,8 @@ export function generateCategoryBreakdownPDF(transactions: Transaction[], catego
   const knownCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
   const uncategorizedTxs = transactions.filter(t => (!t.categoryId && !t.categoryName) || (!knownCategoryIds.has(t.categoryId) && !knownCategoryNames.has((t.categoryName || '').toLowerCase())));
   if (uncategorizedTxs.length > 0) {
-    const income = uncategorizedTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
-    const expense = uncategorizedTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
+    const income = uncategorizedTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expense = uncategorizedTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
     stats.push({
       id: 'uncategorized',
       name: 'Uncategorized',

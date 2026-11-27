@@ -4,89 +4,96 @@
 
 @layer base {
   :root {
+    /* ERP palette: navy app bar, teal actions, grey page plane with white sheets */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 220 26% 14%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 26% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 220 26% 14%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 184 88% 27%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 22% 18%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 16% 96%;
+    --muted-foreground: 220 9% 42%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 184 42% 94%;
+    --accent-foreground: 184 70% 20%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 217.2 91.2% 59.8%;
+    --border: 220 14% 87%;
+    --input: 220 13% 82%;
+    --ring: 184 88% 27%;
 
-    --radius: 0.75rem;
+    --page: 220 17% 95%;
+    --navbar: 216 45% 22%;
+    --navbar-foreground: 210 30% 96%;
+    --navbar-muted: 214 24% 74%;
+    --navbar-hover: 216 40% 29%;
 
-    --sidebar-background: 0 0% 98%;
+    --radius: 0.375rem;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 217.2 91.2% 59.8%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 15% 28%;
+    --sidebar-primary: 184 88% 27%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 16% 96%;
+    --sidebar-accent-foreground: 220 26% 14%;
+    --sidebar-border: 220 14% 87%;
+    --sidebar-ring: 184 88% 27%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 220 24% 10%;
+    --foreground: 216 20% 92%;
 
-    --card: 217.2 32.6% 12%;
-    --card-foreground: 210 40% 98%;
+    --card: 220 22% 13%;
+    --card-foreground: 216 20% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 220 22% 14%;
+    --popover-foreground: 216 20% 92%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 183 60% 44%;
+    --primary-foreground: 220 30% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 220 16% 21%;
+    --secondary-foreground: 216 20% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 220 18% 17%;
+    --muted-foreground: 218 12% 66%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 184 30% 19%;
+    --accent-foreground: 183 55% 82%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 217.2 91.2% 59.8%;
-    --sidebar-background: 222.2 84% 4.9%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 217.2 91.2% 59.8%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217.2 32.6% 17.5%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 220 15% 23%;
+    --input: 220 14% 28%;
+    --ring: 183 60% 44%;
+
+    --page: 220 26% 8%;
+    --navbar: 220 30% 6%;
+    --navbar-foreground: 216 20% 92%;
+    --navbar-muted: 218 12% 62%;
+    --navbar-hover: 220 22% 14%;
+
+    --sidebar-background: 220 22% 13%;
+    --sidebar-foreground: 216 20% 88%;
+    --sidebar-primary: 183 60% 44%;
+    --sidebar-primary-foreground: 220 30% 8%;
+    --sidebar-accent: 220 18% 17%;
+    --sidebar-accent-foreground: 216 20% 92%;
+    --sidebar-border: 220 15% 23%;
+    --sidebar-ring: 183 60% 44%;
   }
 }
 
@@ -99,150 +106,30 @@
     @apply bg-background text-foreground;
   }
   
-  /* Smooth transitions for theme changes */
-  html {
-    transition: background-color 0.3s ease, color 0.3s ease;
+  /* A form field sits 6px under its label (labels are block-level) */
+  .ui-label + :where(input, textarea, select, button, div, [role="combobox"]) {
+    margin-top: 0.375rem;
   }
-  
-  /* Enhanced card animations */
-  @keyframes card-enter {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  
-  .card-animate {
-    animation: card-enter 0.4s ease-out;
-  }
-  
-  /* Gradient backgrounds for cards */
-  .gradient-card {
-    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--muted)) 100%);
-  }
-  
-  .dark .gradient-card {
-    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(217.2 32.6% 8%) 100%);
-  }
-  
-  /* Glow effects for dark mode */
-  .dark {
-    --card-glow: 0 0 30px rgba(59, 130, 246, 0.15);
-    --primary-glow: 0 0 20px rgba(59, 130, 246, 0.3);
-  }
-  
-  .dark .hover\:shadow-lg:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2), var(--card-glow);
-  }
-  
-  /* Smooth hover effects */
-  .hover-lift {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  
-  .hover-lift:hover {
-    transform: translateY(-4px);
-  }
-  
-  /* Custom scrollbar with gradient */
-  .dark ::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
-  }
-  
-  .dark ::-webkit-scrollbar-track {
-    background: hsl(var(--background));
-    border-radius: 10px;
-  }
-  
-  .dark ::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, hsl(var(--primary)) 0%, hsl(var(--muted)) 100%);
-    border-radius: 10px;
-    border: 2px solid hsl(var(--background));
-  }
-  
-  .dark ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, hsl(217.2 91.2% 70%) 0%, hsl(var(--muted-foreground)) 100%);
-  }
-  
-  /* Light mode scrollbar */
+
+  /* Neutral scrollbars */
   ::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
   }
-  
+
   ::-webkit-scrollbar-track {
-    background: hsl(var(--muted));
-    border-radius: 10px;
+    background: transparent;
   }
-  
+
   ::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, hsl(var(--primary)) 0%, hsl(var(--muted-foreground) / 0.5) 100%);
-    border-radius: 10px;
-    border: 2px solid hsl(var(--background));
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
-  
+
   ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, hsl(217.2 91.2% 50%) 0%, hsl(var(--muted-foreground) / 0.7) 100%);
-  }
-  
-  /* Pulse animation for stats */
-  @keyframes pulse-subtle {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.8;
-    }
-  }
-  
-  .pulse-subtle {
-    animation: pulse-subtle 2s ease-in-out infinite;
-  }
-  
-  /* Shimmer effect */
-  @keyframes shimmer {
-    0% {
-      background-position: -1000px 0;
-    }
-    100% {
-      background-position: 1000px 0;
-    }
-  }
-  
-  .shimmer {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.1) 50%,
-      transparent 100%
-    );
-    background-size: 1000px 100%;
-    animation: shimmer 3s infinite;
-  }
-  
-  /* Gradient text */
-  .gradient-text {
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217.2 91.2% 70%) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  
-  /* Glass morphism effect */
-  .glass {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-  
-  .dark .glass {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: hsl(var(--muted-foreground) / 0.55);
+    background-clip: content-box;
   }
 }

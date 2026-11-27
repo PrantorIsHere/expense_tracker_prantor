@@ -1,48 +1,30 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useMemo } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
+import { ArrowLeftRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import Sidebar from '@/components/Sidebar';
+import AppNavbar from '@/components/AppNavbar';
 import TransactionManager from '@/components/TransactionManager';
 import ReportsPage from '@/components/ReportsPage';
 import LoansManager from '@/components/LoansManager';
 import GoalsManager from '@/components/GoalsManager';
 import SettingsPage from '@/components/SettingsPage';
 import UsersTab from '@/components/UsersTab';
-import UserHeader from '@/components/UserHeader';
 import AdditionalInfoTab from '@/components/AdditionalInfoTab';
-import { getUsers, getCategories, getAccounts, getLoans, formatCurrency } from '@/lib/storage';
+import { AccountAvatar, Avatar, ControlPanel, Delta, PageBody, Scorecard, Sheet, Tag, TX_LABEL, TX_TONE } from '@/components/erp';
+import { getUsers, getCategories, getAccounts, formatCurrency } from '@/lib/storage';
 import { apiClient } from '@/lib/api';
-import { getCurrentSession, isAdmin } from '@/lib/auth';
+import { isAdmin } from '@/lib/auth';
+import { formatDateDhaka } from '@/lib/dhakaTime';
+import { type DayRange, addMonths, dayKeyOf, formatDayRange, inRange, previousPeriod, startOfMonth, todayKey } from '@/lib/dateRange';
+import { useChartColors } from '@/lib/chartColors';
 import { Transaction, User, Category, Loan, Goal, Account } from '@/components/types';
-import {
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  Users as UsersIcon,
-  Receipt,
-  Settings,
-  Banknote,
-  Info,
-  Target,
-  PieChart,
-  Calendar,
-  ArrowUpRight,
-  ArrowDownRight,
-  PiggyBank,
-  LayoutDashboard,
-  Wallet,
-  Building2,
-  Smartphone,
-  CreditCard,
-  ArrowLeftRight,
-} from 'lucide-react';
-import { summarize, loanSummary, txMeta } from '@/lib/finance';
+import { summarize, loanSummary, txMeta, cashSign } from '@/lib/finance';
 
 export default function Index() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [txIntent, setTxIntent] = useState<{ key: number; accountId?: string; openNew?: boolean }>({ key: 0 });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -50,7 +32,6 @@ export default function Index() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
 
-  const session = getCurrentSession();
   const isAdminUser = isAdmin();
 
   useEffect(() => {
@@ -129,674 +110,428 @@ export default function Index() {
     setGoals(gls as Goal[]);
   };
 
-  // Calculate financial metrics connected to accounts and loans
+  // ── Figures ───────────────────────────────────────────────────────────────
+  const colors = useChartColors();
+  const today = todayKey();
+  const monthStart = startOfMonth(today);
+  const monthRange: DayRange = { start: monthStart, end: today };
+  const prevMonthRange = previousPeriod(monthRange);
+
+  const rows = useMemo(() => transactions.map(t => ({ ...t, day: dayKeyOf(t.date) })).filter(t => t.day), [transactions]);
+  const thisMonth = summarize(rows.filter(t => inRange(t.day, monthRange)));
+  const lastMonth = summarize(rows.filter(t => inRange(t.day, prevMonthRange)));
+
   const totalAccountFunds = accounts.reduce((sum, a) => sum + (a.balance ?? 0), 0);
-  const finance = summarize(transactions);
+  const balance = accounts.length > 0 ? totalAccountFunds : summarize(transactions).netCashFlow;
 
-  // Total Balance represents your actual available liquid funds (matches Accounts & Payment Methods)
-  const balance = accounts.length > 0 ? totalAccountFunds : finance.netCashFlow;
-
-  const totalIncome = finance.income;
-  const totalExpenses = finance.expense;
-
-  const thisMonthTransactions = transactions.filter(t => {
-    const transactionDate = new Date(t.date);
-    const now = new Date();
-    return transactionDate.getMonth() === now.getMonth() &&
-           transactionDate.getFullYear() === now.getFullYear();
-  });
-
-  const monthFinance = summarize(thisMonthTransactions);
-  const monthlyIncome = monthFinance.income;
-  const monthlyExpenses = monthFinance.expense;
-  const monthlySavings = monthlyIncome - monthlyExpenses;
-  const expenseRatio = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0;
-
-  // Calculate loan statistics taking into account partial repayments and remaining balances
   const loanStats = loanSummary(loans as unknown as Parameters<typeof loanSummary>[0]);
-  const outstandingGiven = loanStats.outstandingGiven;
-  const outstandingTaken = loanStats.outstandingTaken;
-  const netPosition = loanStats.netPosition;
-  const netWorth = balance + netPosition;
   const pendingLoansCount = loanStats.openGiven + loanStats.openTaken;
-
-  // Goals calculations
   const activeGoals = goals.filter(g => g.status === 'active');
-  const completedGoals = goals.filter(g => g.status === 'completed');
-  const totalGoalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
-  const totalGoalSaved = activeGoals.reduce((sum, g) => sum + g.currentAmount, 0);
-  const overallGoalProgress = totalGoalTarget > 0 ? (totalGoalSaved / totalGoalTarget) * 100 : 0;
 
-  // Daily savings rate (last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const recentTransactions = transactions.filter(t => new Date(t.date) >= thirtyDaysAgo);
-  const recentIncome = recentTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const recentExpenses = recentTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const dailySavings = (recentIncome - recentExpenses) / 30;
+  // Last 12 months, oldest first
+  const months = useMemo(() => {
+    const list: { key: string; label: string; income: number; expense: number; net: number; cash: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const key = addMonths(monthStart, -i).slice(0, 7);
+      list.push({ key, label: new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' }).format(new Date(`${key}-01T00:00:00Z`)), income: 0, expense: 0, net: 0, cash: 0 });
+    }
+    const byKey = new Map(list.map(m => [m.key, m]));
+    const opening = accounts.reduce((s, a) => s + (a.initialBalance ?? 0), 0);
+    let before = 0;
+    for (const t of rows) {
+      const m = byKey.get(t.day.slice(0, 7));
+      if (m) {
+        if (t.type === 'income') m.income += t.amount;
+        if (t.type === 'expense') m.expense += t.amount;
+        m.cash += cashSign(t.type) * t.amount;
+      } else if (t.day < list[0].key) {
+        before += cashSign(t.type) * t.amount;
+      }
+    }
+    let running = opening + before;
+    for (const m of list) {
+      m.net = m.income - m.expense;
+      running += m.cash;
+      m.cash = running;
+    }
+    return list;
+  }, [rows, accounts, monthStart]);
 
-  const recentTransactionsList = transactions
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5);
+  // Money in and out of each account this month (transfers count on both sides)
+  const accountActivity = useMemo(() => {
+    const map = new Map<string, { inMonth: number; outMonth: number }>();
+    const add = (id: string | undefined, signed: number, day: string) => {
+      if (!id || signed === 0 || day < monthStart || day > today) return;
+      const e = map.get(id) ?? { inMonth: 0, outMonth: 0 };
+      if (signed > 0) e.inMonth += signed; else e.outMonth -= signed;
+      map.set(id, e);
+    };
+    for (const t of rows) {
+      if (t.type === 'transfer') {
+        add(t.accountId, -t.amount, t.day);
+        add(t.toAccountId, t.amount, t.day);
+      } else {
+        add(t.accountId, cashSign(t.type) * t.amount, t.day);
+      }
+    }
+    return map;
+  }, [rows, monthStart, today]);
 
-  const pageConfig = {
-    dashboard: {
-      title: 'Dashboard',
-      description: `Welcome back, ${session?.username}! Here's your financial overview.`,
-      icon: LayoutDashboard,
-    },
-    transactions: {
-      title: 'Transaction Manager',
-      description: 'Manage your income and expenses',
-      icon: Receipt,
-    },
-    goals: {
-      title: 'Savings Goals',
-      description: 'Track your savings goals and smart insights',
-      icon: Target,
-    },
-    reports: {
-      title: 'Financial Reports',
-      description: 'Analyze your financial data',
-      icon: TrendingUp,
-    },
-    loans: {
-      title: 'Loans Manager',
-      description: 'Track loans given and taken',
-      icon: Banknote,
-    },
-    users: {
-      title: 'User Management',
-      description: 'Manage account users and financial users',
-      icon: UsersIcon,
-    },
-    settings: {
-      title: 'Settings',
-      description: 'Configure your preferences',
-      icon: Settings,
-    },
-    additional: {
-      title: 'Additional Info',
-      description: 'Manage additional history and export combined PDF reports',
-      icon: Info,
-    },
-  } as const;
+  const topExpenses = useMemo(() => {
+    const byCat = new Map<string, number>();
+    for (const t of rows) {
+      if (t.type !== 'expense' || !inRange(t.day, monthRange)) continue;
+      const name = categories.find(c => c.id === t.categoryId)?.name || t.categoryName || 'Uncategorized';
+      byCat.set(name, (byCat.get(name) ?? 0) + t.amount);
+    }
+    return [...byCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, categories, monthStart, today]);
 
-  const currentPage = pageConfig[activeTab as keyof typeof pageConfig] ?? pageConfig.dashboard;
-  const CurrentPageIcon = currentPage.icon;
+  const recent = [...rows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
+
+  const userName = (t: Transaction) =>
+    users.find(u => u.id === t.userId)?.name
+    || users.find(u => t.userName && u.name.toLowerCase() === t.userName.toLowerCase())?.name
+    || t.userName || 'Unknown';
+  const categoryName = (t: Transaction) =>
+    categories.find(c => c.id === t.categoryId)?.name
+    || categories.find(c => t.categoryName && c.name.toLowerCase() === t.categoryName.toLowerCase())?.name
+    || t.categoryName || 'Uncategorized';
+
+  const accountTypeLabel = (type: string) => ({
+    cash: 'Cash', bank: 'Bank', mobile_wallet: 'Mobile wallet', mobile_banking: 'Mobile banking',
+    credit_card: 'Credit card', savings: 'Savings', other: 'Other',
+  } as Record<string, string>)[type] ?? type;
+
+  const pct = (cur: number, prev: number) => (prev > 0 ? ((cur - prev) / prev) * 100 : null);
+  const pctText = (n: number) => `${Math.abs(n).toFixed(1)}%`;
+  const vsLabel = 'vs same days last month';
+
+  const openTransactions = (intent: { accountId?: string; openNew?: boolean }) => {
+    setTxIntent({ ...intent, key: Date.now() });
+    setActiveTab('transactions');
+  };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <Sidebar
+    <div className="flex h-screen flex-col bg-page">
+      <AppNavbar
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={tab => { if (tab === 'transactions') setTxIntent({ key: Date.now() }); setActiveTab(tab); }}
         pendingLoansCount={pendingLoansCount}
         activeGoalsCount={activeGoals.length}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-card/80 backdrop-blur-lg shadow-lg border-b border-border px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                  <CurrentPageIcon className="h-6 w-6" />
+      <main className="flex-1 overflow-auto">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsContent value="dashboard" className="mt-0">
+            <ControlPanel
+              title="Dashboard"
+              actions={
+                <Button size="sm" onClick={() => openTransactions({ openNew: true })}>
+                  <Plus className="h-4 w-4" aria-hidden />
+                  New transaction
+                </Button>
+              }
+            >
+              <Button variant="secondary" size="sm" onClick={() => setActiveTab('settings')}>
+                <ArrowLeftRight className="h-4 w-4" aria-hidden />
+                Transfer funds
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setActiveTab('reports')}>
+                Reports
+              </Button>
+            </ControlPanel>
+
+            <PageBody>
+              {/* Scorecards */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <Scorecard
+                  label="Cash and bank"
+                  value={formatCurrency(balance)}
+                  emphasis
+                  trend={months.map(m => m.cash)}
+                  color={colors.balance}
+                  delta={loanStats.netPosition !== 0
+                    ? <p className="text-xs text-muted-foreground">Net worth with loans <span className="font-medium text-foreground">{formatCurrency(balance + loanStats.netPosition)}</span></p>
+                    : null}
+                />
+                <Scorecard
+                  label="Income this month"
+                  value={formatCurrency(thisMonth.income)}
+                  trend={months.map(m => m.income)}
+                  color={colors.income}
+                  delta={<Delta value={pct(thisMonth.income, lastMonth.income)} format={pctText} label={vsLabel} />}
+                />
+                <Scorecard
+                  label="Expenses this month"
+                  value={formatCurrency(thisMonth.expense)}
+                  trend={months.map(m => m.expense)}
+                  color={colors.expense}
+                  delta={<Delta value={pct(thisMonth.expense, lastMonth.expense)} format={pctText} label={vsLabel} upIsGood={false} />}
+                />
+                <Scorecard
+                  label={thisMonth.netSavings >= 0 ? 'Saved this month' : 'Overspent this month'}
+                  value={formatCurrency(Math.abs(thisMonth.netSavings))}
+                  trend={months.map(m => m.net)}
+                  color={thisMonth.netSavings >= 0 ? colors.balance : colors.negative}
+                  delta={<p className="text-xs text-muted-foreground">
+                    Savings rate {thisMonth.income > 0 ? `${((thisMonth.netSavings / thisMonth.income) * 100).toFixed(1)}%` : '—'}
+                  </p>}
+                />
+              </div>
+
+              {/* Account cards */}
+              <div>
+                <div className="mb-2 flex items-baseline justify-between">
+                  <h2 className="text-sm font-semibold">Accounts</h2>
+                  <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveTab('settings')}>Manage accounts</Button>
                 </div>
-                <h1 className="text-3xl font-bold gradient-text">
-                  {currentPage.title}
-                </h1>
+                {accounts.length === 0 ? (
+                  <Sheet>
+                    <div className="p-6 text-sm text-muted-foreground">
+                      No accounts yet.{' '}
+                      <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveTab('settings')}>Add one in Settings</Button>
+                    </div>
+                  </Sheet>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(14rem,1fr))]">
+                    {accounts.map(account => {
+                      const activity = accountActivity.get(account.id);
+                      const balanceValue = account.balance ?? 0;
+                      return (
+                        <button
+                          key={account.id}
+                          type="button"
+                          onClick={() => openTransactions({ accountId: account.id })}
+                          aria-label={`${account.name}, balance ${formatCurrency(balanceValue)}. View its transactions`}
+                          className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent/40"
+                        >
+                          <div className="flex w-full items-center gap-3">
+                            <AccountAvatar name={account.name} bankName={account.bankName} color={account.color} size="lg" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{account.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {accountTypeLabel(account.type)}{account.accountNumber ? `, #${account.accountNumber}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <p className={`text-2xl font-semibold tabular-nums ${balanceValue < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                            {formatCurrency(balanceValue)}
+                          </p>
+                          <dl className="grid w-full grid-cols-2 gap-2 border-t pt-2 text-xs">
+                            <div>
+                              <dt className="text-muted-foreground">In this month</dt>
+                              <dd className="mt-0.5 font-medium tabular-nums">{formatCurrency(activity?.inMonth ?? 0)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-muted-foreground">Out this month</dt>
+                              <dd className="mt-0.5 font-medium tabular-nums">{formatCurrency(activity?.outMonth ?? 0)}</dd>
+                            </div>
+                          </dl>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <p className="text-muted-foreground mt-1 text-sm">
-                {currentPage.description}
-              </p>
-            </div>
-            <UserHeader />
-          </div>
-        </header>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-auto p-6">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsContent value="dashboard" className="space-y-6">
-              {/* Financial Overview Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="border-border bg-gradient-to-br from-card to-card/50 hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Total Balance</CardTitle>
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <DollarSign className="h-5 w-5 text-primary" />
+              {/* Trend + top expenses */}
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <Sheet
+                  className="xl:col-span-2"
+                  title="Income and expenses"
+                  note="Last 6 months"
+                  actions={
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: colors.income }} />Income</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: colors.expense }} />Expenses</span>
                     </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className={`text-3xl font-bold ${balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatCurrency(balance)}
+                  }
+                >
+                  <div className="h-64 px-2 py-3">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={months.slice(-6)} barGap={2} barCategoryGap="30%" margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid vertical={false} stroke={colors.grid} />
+                        <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: colors.axis }} tick={{ fill: colors.tick, fontSize: 12 }} />
+                        <YAxis tickLine={false} axisLine={false} tick={{ fill: colors.tick, fontSize: 12 }} tickFormatter={v => compact.format(Number(v))} width={44} />
+                        <RechartsTooltip
+                          cursor={{ fill: colors.cursor }}
+                          formatter={(v: number, name: string) => [formatCurrency(Number(v)), name]}
+                          contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 6, fontSize: 12, color: 'hsl(var(--popover-foreground))' }}
+                        />
+                        <Bar dataKey="income" name="Income" fill={colors.income} radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
+                        <Bar dataKey="expense" name="Expenses" fill={colors.expense} radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Sheet>
+
+                <Sheet title="Top expenses" note="This month">
+                  {topExpenses.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground">No expenses this month.</p>
+                  ) : (
+                    <ul className="space-y-3 p-4">
+                      {topExpenses.map(([name, amount]) => (
+                        <li key={name} className="text-sm">
+                          <div className="flex justify-between gap-3">
+                            <span className="truncate">{name}</span>
+                            <span className="tabular-nums">{formatCurrency(amount)}</span>
+                          </div>
+                          <div className="mt-1 h-1.5 rounded-full bg-muted">
+                            <div className="h-1.5 rounded-full" style={{ width: `${(amount / topExpenses[0][1]) * 100}%`, backgroundColor: colors.expense }} />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Sheet>
+              </div>
+
+              {/* Activity, loans, goals */}
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <Sheet
+                  className="xl:col-span-2"
+                  title="Recent activity"
+                  actions={<Button variant="link" size="sm" className="h-auto p-0" onClick={() => openTransactions({})}>All transactions</Button>}
+                >
+                  {recent.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">
+                      No transactions yet.{' '}
+                      <Button variant="link" size="sm" className="h-auto p-0" onClick={() => openTransactions({ openNew: true })}>Add a transaction</Button>
                     </div>
-                    <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        {balance >= 0 ? <ArrowUpRight className="h-3 w-3 text-green-500" /> : <ArrowDownRight className="h-3 w-3 text-red-500" />}
-                        Liquid Cash & Bank
+                  ) : (
+                    <ul className="divide-y">
+                      {recent.map(t => {
+                        const meta = txMeta(t.type);
+                        const who = userName(t);
+                        return (
+                          <li key={t.id} className="flex items-center gap-3 px-4 py-2.5">
+                            <Avatar name={who} />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">{t.title}</p>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                <Tag tone={TX_TONE[t.type]}>{TX_LABEL[t.type] ?? t.type}</Tag>
+                                <span>{t.type === 'transfer' ? `${t.accountName || 'Account'} → ${t.toAccountName || 'Account'}` : categoryName(t)}</span>
+                                <span>{who}</span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-sm font-semibold tabular-nums ${meta.text}`}>{meta.prefix}{formatCurrency(t.amount)}</p>
+                              <p className="text-xs tabular-nums text-muted-foreground">{formatDateDhaka(t.date)}</p>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </Sheet>
+
+                <div className="space-y-4">
+                  <Sheet title="Loans" actions={<Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveTab('loans')}>Open loans</Button>}>
+                    <div className="grid grid-cols-2 divide-x border-b">
+                      <div className="p-4">
+                        <p className="text-xs text-muted-foreground">Owed to you</p>
+                        <p className="mt-0.5 text-lg font-semibold tabular-nums">{formatCurrency(loanStats.outstandingGiven)}</p>
+                        <p className="text-xs text-muted-foreground">{loanStats.openGiven} open</p>
+                      </div>
+                      <div className="p-4">
+                        <p className="text-xs text-muted-foreground">You owe</p>
+                        <p className="mt-0.5 text-lg font-semibold tabular-nums">{formatCurrency(loanStats.outstandingTaken)}</p>
+                        <p className="text-xs text-muted-foreground">{loanStats.openTaken} open</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+                      <span className="text-muted-foreground">Net position</span>
+                      <span className={`font-semibold tabular-nums ${loanStats.netPosition < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                        {loanStats.netPosition < 0 ? '-' : ''}{formatCurrency(Math.abs(loanStats.netPosition))}
                       </span>
-                      {netPosition !== 0 && (
-                        <span className="font-semibold text-primary">
-                          Net Worth: {formatCurrency(netWorth)}
-                        </span>
-                      )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </Sheet>
 
-                <Card className="border-border bg-gradient-to-br from-green-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Monthly Income</CardTitle>
-                    <div className="p-2 rounded-lg bg-green-500/10">
-                      <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                      {formatCurrency(monthlyIncome)}
-                    </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
-                      <ArrowUpRight className="h-3 w-3" />
-                      This month's earnings
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-red-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Monthly Expenses</CardTitle>
-                    <div className="p-2 rounded-lg bg-red-500/10">
-                      <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                      {formatCurrency(monthlyExpenses)}
-                    </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
-                      <ArrowDownRight className="h-3 w-3" />
-                      This month's spending
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-emerald-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-emerald-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Monthly Savings</CardTitle>
-                    <div className="p-2 rounded-lg bg-emerald-500/10">
-                      <PiggyBank className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className={`text-3xl font-bold ${monthlySavings >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatCurrency(Math.abs(monthlySavings))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {monthlySavings >= 0 ? 'Saved this month' : 'Overspent this month'}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-amber-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Expense Ratio</CardTitle>
-                    <div className="p-2 rounded-lg bg-amber-500/10">
-                      <PieChart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className={`text-3xl font-bold ${expenseRatio <= 100 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {expenseRatio.toFixed(1)}%
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      All-time expense vs income
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-green-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Outstanding Given</CardTitle>
-                    <div className="p-2 rounded-lg bg-green-500/10">
-                      <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                      {formatCurrency(outstandingGiven)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Amount you lent (pending repayment)
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-red-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-red-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Outstanding Taken</CardTitle>
-                    <div className="p-2 rounded-lg bg-red-500/10">
-                      <TrendingDown className="h-5 w-5 text-red-600 dark:text-red-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                      {formatCurrency(outstandingTaken)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Amount you borrowed (pending repayment)
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-blue-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate overflow-hidden relative">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/20 to-transparent rounded-full blur-3xl" />
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Net Position</CardTitle>
-                    <Badge variant={netPosition >= 0 ? "default" : "destructive"} className="ml-auto">
-                      {netPosition >= 0 ? 'You are owed' : 'You owe'}
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="relative z-10">
-                    <div className={`text-3xl font-bold ${netPosition >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatCurrency(Math.abs(netPosition))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Net outstanding amount
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Accounts & Payment Methods Overview */}
-              <Card className="border-border bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-                <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <div>
-                    <CardTitle className="flex items-center gap-2 text-card-foreground">
-                      <Wallet className="h-5 w-5 text-primary" />
-                      Accounts & Payment Methods
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Live balances across Bank Accounts, Mobile Banking, and Cash
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right hidden sm:block">
-                      <p className="text-xs text-muted-foreground">Total Liquid Funds</p>
-                      <p className="text-lg font-bold text-primary">{formatCurrency(totalAccountFunds)}</p>
-                    </div>
-                    <Button 
-                      variant="default" 
-                      size="sm" 
-                      onClick={() => setActiveTab('settings')}
-                      className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
-                      <ArrowLeftRight className="h-3 w-3 mr-1" />
-                      Transfer Funds
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => setActiveTab('settings')}
-                      className="text-xs"
-                    >
-                      <Settings className="h-3 w-3 mr-1" />
-                      Manage Accounts
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {accounts.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {accounts.map((account) => {
-                        const isBank = account.type === 'bank';
-                        const isMobile = (account.type as string) === 'mobile_banking' || account.type === 'mobile_wallet';
-                        const isCash = account.type === 'cash';
-
-                        const Icon = isBank ? Building2 : isMobile ? Smartphone : isCash ? Wallet : CreditCard;
-
-                        return (
-                          <div 
-                            key={account.id}
-                            className="p-4 rounded-xl border border-border/60 bg-gradient-to-br from-card to-muted/30 hover:border-primary/40 hover:shadow-md transition-all duration-200"
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <div className={`p-2 rounded-lg ${
-                                  isBank ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
-                                  isMobile ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
-                                  isCash ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                                  'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                }`}>
-                                  <Icon className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <p className="font-semibold text-sm truncate max-w-[130px]">{account.name}</p>
-                                  {account.bankName && (
-                                    <p className="text-[11px] text-muted-foreground truncate max-w-[130px]">{account.bankName}</p>
-                                  )}
-                                </div>
+                  <Sheet title="Savings goals" actions={<Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveTab('goals')}>Open goals</Button>}>
+                    {activeGoals.length === 0 ? (
+                      <p className="p-4 text-sm text-muted-foreground">No active goals.</p>
+                    ) : (
+                      <ul className="space-y-4 p-4">
+                        {activeGoals.slice(0, 4).map(goal => {
+                          const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                          return (
+                            <li key={goal.id}>
+                              <div className="flex items-baseline justify-between gap-2 text-sm">
+                                <span className="truncate font-medium">{goal.title}</span>
+                                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{progress.toFixed(0)}%</span>
                               </div>
-                              <Badge variant="outline" className="text-[10px] capitalize px-1.5 py-0">
-                                {account.type.replace('_', ' ')}
-                              </Badge>
-                            </div>
-                            <div className="mt-2">
-                              <div className={`text-xl font-bold ${
-                                (account.balance ?? 0) >= 0 ? 'text-foreground' : 'text-red-600 dark:text-red-400'
-                              }`}>
-                                {formatCurrency(account.balance ?? 0)}
-                              </div>
-                              <div className="flex justify-between items-center text-[11px] text-muted-foreground mt-1">
-                                <span>Initial: {formatCurrency(account.initialBalance ?? 0)}</span>
-                                {account.accountNumber && (
-                                  <span className="truncate max-w-[90px]">#{account.accountNumber}</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <p className="text-sm">No payment accounts configured yet.</p>
-                      <Button 
-                        variant="link" 
-                        size="sm" 
-                        onClick={() => setActiveTab('settings')}
-                        className="mt-1 text-primary text-xs"
-                      >
-                        Set up Bank Accounts & Wallets in Settings
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Goals Overview + Quick Stats Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="border-border bg-gradient-to-br from-purple-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate cursor-pointer" onClick={() => setActiveTab('goals')}>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Savings Goals</CardTitle>
-                    <div className="p-2 rounded-lg bg-purple-500/10">
-                      <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                      {activeGoals.length} Active
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {completedGoals.length} completed
-                    </p>
-                    {activeGoals.length > 0 && (
-                      <div className="mt-2">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span>{formatCurrency(totalGoalSaved)}</span>
-                          <span className="text-muted-foreground">{formatCurrency(totalGoalTarget)}</span>
-                        </div>
-                        <Progress value={overallGoalProgress} className="h-2" />
-                        <p className="text-xs text-muted-foreground mt-1">{overallGoalProgress.toFixed(1)}% overall</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-orange-500/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Daily Savings Rate</CardTitle>
-                    <div className="p-2 rounded-lg bg-orange-500/10">
-                      <PiggyBank className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-2xl font-bold ${dailySavings >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatCurrency(Math.abs(dailySavings))}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {dailySavings >= 0 ? 'saving' : 'overspending'} per day (avg 30d)
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-primary/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Financial Users</CardTitle>
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <UsersIcon className="h-5 w-5 text-primary" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-primary">
-                      {users.length}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Total registered users
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border bg-gradient-to-br from-primary/10 to-card hover:shadow-2xl transition-all duration-300 hover-lift card-animate">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-card-foreground">Categories</CardTitle>
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <PieChart className="h-5 w-5 text-primary" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-primary">
-                      {categories.length}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Transaction categories
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Top Active Goals on Dashboard */}
-              {activeGoals.length > 0 && (
-                <Card className="border-border bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2 text-card-foreground">
-                        <Target className="h-5 w-5 text-purple-600" />
-                        Active Savings Goals
-                      </CardTitle>
-                      <Button variant="outline" size="sm" onClick={() => setActiveTab('goals')}>
-                        View All
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {activeGoals.slice(0, 3).map((goal) => {
-                        const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-                        const remaining = goal.targetAmount - goal.currentAmount;
-                        const deadlineDate = new Date(goal.deadline);
-                        const now = new Date();
-                        const daysRemaining = Math.max(0, Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                        const dailyNeeded = daysRemaining > 0 ? remaining / daysRemaining : remaining;
-
-                        return (
-                          <div key={goal.id} className="p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-xl border border-border/50 hover:shadow-md transition-all duration-300">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Target className="h-4 w-4 text-purple-600" />
-                                <span className="font-semibold">{goal.title}</span>
-                              </div>
-                              <Badge variant={
-                                goal.priority === 'high' ? 'destructive' :
-                                goal.priority === 'medium' ? 'default' : 'secondary'
-                              }>
-                                {goal.priority}
-                              </Badge>
-                            </div>
-                            <div className="flex justify-between text-sm mb-1">
-                              <span>{formatCurrency(goal.currentAmount)}</span>
-                              <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
-                            </div>
-                            <Progress value={Math.min(progress, 100)} className="h-2 mb-2" />
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>{progress.toFixed(1)}% • {formatCurrency(remaining)} remaining</span>
-                              <span>
-                                {daysRemaining > 0
-                                  ? `${daysRemaining}d left • ${formatCurrency(dailyNeeded)}/day`
-                                  : 'Deadline passed'
-                                }
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Recent Transactions */}
-              <Card className="border-border bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-card-foreground">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    Recent Transactions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {recentTransactionsList.length > 0 ? (
-                    <div className="space-y-3">
-                      {recentTransactionsList.map((transaction, index) => {
-                        const meta = txMeta(transaction.type);
-                        return (
-                            <div 
-                              key={transaction.id} 
-                              className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-xl hover:from-muted hover:to-muted/50 transition-all duration-300 border border-border/50 hover-lift"
-                              style={{ animationDelay: `${index * 100}ms` }}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className={`w-3 h-3 rounded-full ${meta.dot} pulse-subtle`} />
-                                <div>
-                                  <p className="font-semibold text-foreground">{transaction.title}</p>
-                                  {transaction.type === 'transfer' ? (
-                                    <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                      <span>Transfer:</span>
-                                      <span className="font-medium text-foreground">{transaction.accountName || 'Account'}</span>
-                                      <span>→</span>
-                                      <span className="font-medium text-foreground">{transaction.toAccountName || 'Account'}</span>
-                                    </p>
-                                  ) : (
-                                    <p className="text-sm text-muted-foreground">
-                                      {(users.find(u => u.id === transaction.userId)?.name || users.find(u => transaction.userName && u.name.toLowerCase() === transaction.userName.toLowerCase())?.name || transaction.userName || 'Unknown')} • {(categories.find(c => c.id === transaction.categoryId)?.name || categories.find(c => transaction.categoryName && c.name.toLowerCase() === transaction.categoryName.toLowerCase())?.name || transaction.categoryName || 'Uncategorized')}
-                                      {transaction.accountName ? ` • ${transaction.accountName}` : ''}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className={`font-bold text-lg ${meta.text}`}>
-                                  {meta.prefix}{formatCurrency(transaction.amount)}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {new Date(transaction.date).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
+                              <Progress value={Math.min(progress, 100)} className="mt-1.5 h-1.5" />
+                              <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+                                {formatCurrency(goal.currentAmount)} of {formatCurrency(goal.targetAmount)}
+                              </p>
+                            </li>
                           );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <PieChart className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                      <p className="text-lg font-medium">No transactions yet</p>
-                      <p className="text-sm mb-4">Start tracking your finances today</p>
-                      <Button
-                        variant="default"
-                        className="mt-2 hover-lift"
-                        onClick={() => setActiveTab('transactions')}
-                      >
-                        Add Transaction
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                        })}
+                      </ul>
+                    )}
+                  </Sheet>
+                </div>
+              </div>
 
-              {/* Admin Section */}
               {isAdminUser && (
-                <Card className="border-border bg-gradient-to-br from-primary/5 via-card to-card hover:shadow-xl transition-all duration-300">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-card-foreground">
-                      <UsersIcon className="h-5 w-5 text-primary" />
-                      Admin Overview
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-                      <div className="text-center p-6 bg-gradient-to-br from-blue-500/20 to-blue-500/5 rounded-xl border border-blue-500/20 hover-lift">
-                        <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{users.length}</p>
-                        <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">Financial Users</p>
+                <Sheet title="Records">
+                  <dl className="grid grid-cols-2 divide-x divide-y sm:grid-cols-5 sm:divide-y-0">
+                    {[
+                      ['Financial users', users.length],
+                      ['Transactions', transactions.length],
+                      ['Savings goals', goals.length],
+                      ['Categories', categories.length],
+                      ['Accounts', accounts.length],
+                    ].map(([label, value]) => (
+                      <div key={label as string} className="px-4 py-3">
+                        <dt className="text-xs text-muted-foreground">{label}</dt>
+                        <dd className="mt-0.5 text-lg font-semibold tabular-nums">{value}</dd>
                       </div>
-                      <div className="text-center p-6 bg-gradient-to-br from-green-500/20 to-green-500/5 rounded-xl border border-green-500/20 hover-lift">
-                        <p className="text-3xl font-bold text-green-600 dark:text-green-400">{transactions.length}</p>
-                        <p className="text-sm text-green-700 dark:text-green-300 mt-1">Total Transactions</p>
-                      </div>
-                      <div className="text-center p-6 bg-gradient-to-br from-purple-500/20 to-purple-500/5 rounded-xl border border-purple-500/20 hover-lift">
-                        <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{goals.length}</p>
-                        <p className="text-sm text-purple-700 dark:text-purple-300 mt-1">Savings Goals</p>
-                      </div>
-                      <div className="text-center p-6 bg-gradient-to-br from-orange-500/20 to-orange-500/5 rounded-xl border border-orange-500/20 hover-lift">
-                        <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">{categories.length}</p>
-                        <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">Categories</p>
-                      </div>
-                      <div className="text-center p-6 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 rounded-xl border border-emerald-500/20 hover-lift">
-                        <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{accounts.length}</p>
-                        <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">Accounts</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    ))}
+                  </dl>
+                </Sheet>
               )}
-            </TabsContent>
+            </PageBody>
+          </TabsContent>
 
-            <TabsContent value="transactions">
-              <TransactionManager onDataChange={loadData} />
-            </TabsContent>
+          <TabsContent value="transactions" className="mt-0">
+            <TransactionManager
+              key={txIntent.key}
+              onDataChange={loadData}
+              initialAccountId={txIntent.accountId}
+              openNewOnMount={txIntent.openNew}
+            />
+          </TabsContent>
 
-            <TabsContent value="goals">
-              <GoalsManager onDataChange={loadData} />
-            </TabsContent>
+          <TabsContent value="goals" className="mt-0">
+            <GoalsManager onDataChange={loadData} />
+          </TabsContent>
 
-            <TabsContent value="reports">
-              <ReportsPage />
-            </TabsContent>
+          <TabsContent value="reports" className="mt-0">
+            <ReportsPage />
+          </TabsContent>
 
-            <TabsContent value="loans">
-              <LoansManager onDataChange={loadData} />
-            </TabsContent>
+          <TabsContent value="loans" className="mt-0">
+            <LoansManager onDataChange={loadData} />
+          </TabsContent>
 
-            <TabsContent value="users">
-              <UsersTab onDataChange={loadData} />
-            </TabsContent>
+          <TabsContent value="users" className="mt-0">
+            <UsersTab onDataChange={loadData} />
+          </TabsContent>
 
-            <TabsContent value="settings">
-              <SettingsPage onDataChange={loadData} />
-            </TabsContent>
+          <TabsContent value="settings" className="mt-0">
+            <SettingsPage onDataChange={loadData} />
+          </TabsContent>
 
-            <TabsContent value="additional">
-              <AdditionalInfoTab />
-            </TabsContent>
-          </Tabs>
-        </main>
-      </div>
+          <TabsContent value="additional" className="mt-0">
+            <AdditionalInfoTab />
+          </TabsContent>
+        </Tabs>
+      </main>
     </div>
   );
 }
+
+const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });

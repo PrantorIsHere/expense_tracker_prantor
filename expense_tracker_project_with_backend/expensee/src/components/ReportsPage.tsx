@@ -1,31 +1,90 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { getCategories, getUsers, formatCurrency } from '@/lib/storage';
-import { apiClient } from '@/lib/api';
-import { Transaction, Category, User, Loan, Goal } from '@/components/types';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  Legend,
+  type TooltipProps,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Target, DollarSign, Activity, Users as UsersIcon, FileText, PiggyBank, Banknote, Wallet, Clock, CheckCircle, HeartHandshake } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Download, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import DateRangePicker from '@/components/DateRangePicker';
+import { AccountAvatar, ControlPanel, PageBody } from '@/components/erp';
+import { getAccounts, getCategories, getUsers, formatCurrency } from '@/lib/storage';
+import { apiClient } from '@/lib/api';
+import { Account, Category, Goal, Loan, Transaction, User } from '@/components/types';
 import { generateCategoryBreakdownPDF } from '@/lib/categoryBreakdownPDF';
-import { getAccounts } from '@/lib/storage';
-import { Account } from '@/components/types';
-import { loanSummary, loanRemaining, isLoanOpen, summarize } from '@/lib/finance';
+import { downloadStatementPDF } from '@/lib/monthlyStatementPDF';
+import { createStatementPeriod } from '@/lib/statementPeriod';
+import { loanRemaining, summarize } from '@/lib/finance';
+import { CHART, useChartColors } from '@/lib/chartColors';
+import {
+  RANGE_PRESETS,
+  type DayRange,
+  addDays,
+  addMonths,
+  dayCount,
+  dayKeyOf,
+  formatDayKey,
+  formatDayRange,
+  inRange,
+  matchPreset,
+  previousPeriod,
+  startOfMonth,
+  todayKey,
+} from '@/lib/dateRange';
+
+type Row = Transaction & { day: string };
+type Granularity = 'day' | 'month' | 'year';
+
+const REPORT_PRESETS = ['thisMonth', 'lastMonth', 'last30', 'thisQuarter', 'thisYear', 'lastYear', 'last12'];
+
+const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+const monthLabel = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short', year: '2-digit' });
+const dayLabel = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+const keyDate = (key: string) => new Date(`${key}T00:00:00Z`);
+
+const signedCurrency = (n: number) => `${n < 0 ? '-' : ''}${formatCurrency(Math.abs(n))}`;
+
+function bucketOf(day: string, granularity: Granularity) {
+  return granularity === 'day' ? day : granularity === 'month' ? day.slice(0, 7) : day.slice(0, 4);
+}
+
+function bucketsFor(range: DayRange, granularity: Granularity) {
+  const keys: { key: string; label: string; long: string }[] = [];
+  if (granularity === 'day') {
+    for (let d = range.start; d <= range.end; d = addDays(d, 1)) {
+      keys.push({ key: d, label: dayLabel.format(keyDate(d)), long: formatDayKey(d) });
+    }
+  } else if (granularity === 'month') {
+    for (let d = startOfMonth(range.start); d <= range.end; d = addMonths(d, 1)) {
+      const date = keyDate(d);
+      keys.push({
+        key: d.slice(0, 7),
+        label: monthLabel.format(date),
+        long: new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(date),
+      });
+    }
+  } else {
+    for (let y = Number(range.start.slice(0, 4)); y <= Number(range.end.slice(0, 4)); y++) {
+      keys.push({ key: String(y), label: String(y), long: String(y) });
+    }
+  }
+  return keys;
+}
 
 export default function ReportsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -34,6 +93,14 @@ export default function ReportsPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+
+  const [range, setRange] = useState<DayRange | null>(() => RANGE_PRESETS.find(p => p.id === 'thisYear')!.range());
+  const [accountId, setAccountId] = useState('all');
+  const [userId, setUserId] = useState('all');
+  const [trendView, setTrendView] = useState<'graph' | 'table'>('graph');
+  const [sort, setSort] = useState<{ key: 'name' | 'count' | 'income' | 'expense' | 'net'; desc: boolean }>({ key: 'expense', desc: true });
+
+  const colors = useChartColors();
 
   useEffect(() => {
     (async () => {
@@ -46,53 +113,47 @@ export default function ReportsPage() {
         getAccounts(),
       ]);
 
-      // Map transactions server → frontend (with fallback for old local storage data)
       const txns = (txnsRaw as Record<string, unknown>[]).map(t => ({
-        id:          String(t.id ?? ''),
-        voucherId:   String(t.voucher_id ?? t.voucherId ?? ''),
-        title:       String(t.title ?? ''),
+        id: String(t.id ?? ''),
+        voucherId: String(t.voucher_id ?? t.voucherId ?? ''),
+        title: String(t.title ?? ''),
         description: t.description ? String(t.description) : undefined,
-        amount:      Number(t.amount ?? 0),
-        type:        t.type as Transaction['type'],
-        categoryId:    String(t.category_id ?? t.categoryId ?? ''),
-        categoryName:  t.category_name ? String(t.category_name) : (t.categoryName ? String(t.categoryName) : undefined),
+        amount: Number(t.amount ?? 0),
+        type: t.type as Transaction['type'],
+        categoryId: String(t.category_id ?? t.categoryId ?? ''),
+        categoryName: t.category_name ? String(t.category_name) : (t.categoryName ? String(t.categoryName) : undefined),
         categoryColor: t.category_color ? String(t.category_color) : (t.categoryColor ? String(t.categoryColor) : undefined),
-        userId:        String(t.financial_user_id ?? t.userId ?? ''),
-        userName:      t.user_name ? String(t.user_name) : (t.userName ? String(t.userName) : undefined),
-        accountName:   t.account_name ? String(t.account_name) : undefined,
-        date:          String(t.date ?? ''),
-        createdAt:   String(t.created_at ?? t.createdAt ?? ''),
-        updatedAt:   String(t.updated_at ?? t.updatedAt ?? ''),
+        accountId: t.account_id || t.accountId ? String(t.account_id ?? t.accountId) : undefined,
+        accountName: t.account_name ? String(t.account_name) : undefined,
+        toAccountId: t.to_account_id || t.toAccountId ? String(t.to_account_id ?? t.toAccountId) : undefined,
+        userId: String(t.financial_user_id ?? t.userId ?? ''),
+        userName: t.user_name ? String(t.user_name) : (t.userName ? String(t.userName) : undefined),
+        date: String(t.date ?? ''),
+        createdAt: String(t.created_at ?? t.createdAt ?? ''),
+        updatedAt: String(t.updated_at ?? t.updatedAt ?? ''),
       }));
 
-      // Map loans server → frontend
       const lns = (lnsRaw as Record<string, unknown>[]).map(l => ({
-        id:             String(l.id ?? ''),
-        transactionId:  String(l.transaction_id ?? l.transactionId ?? ''),
-        userId:         String(l.user_id ?? l.userId ?? ''),
-        person:         l.person ? String(l.person) : undefined,
-        amount:         Number(l.amount ?? 0),
-        type:           l.type as Loan['type'],
-        status:         String(l.status ?? 'pending') as Loan['status'],
-        repaidAmount:   Number(l.repaid_amount ?? l.repaidAmount ?? 0),
-        repaid_amount:  Number(l.repaid_amount ?? l.repaidAmount ?? 0),
-        forgivenAmount: Number(l.forgiven_amount ?? l.forgivenAmount ?? 0),
-        dueDate:        l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
-        createdAt:      String(l.created_at ?? l.createdAt ?? ''),
+        id: String(l.id ?? ''),
+        person: l.person ? String(l.person) : undefined,
+        amount: Number(l.amount ?? 0),
+        type: l.type as Loan['type'],
+        status: String(l.status ?? 'pending') as Loan['status'],
+        repaidAmount: Number(l.repaid_amount ?? l.repaidAmount ?? 0),
+        repaid_amount: Number(l.repaid_amount ?? l.repaidAmount ?? 0),
+        dueDate: l.due_date ? String(l.due_date) : (l.dueDate ? String(l.dueDate) : undefined),
       }));
 
-      // Map goals server → frontend
       const gls = (glsRaw as Record<string, unknown>[]).map(g => ({
-        id:            String(g.id ?? ''),
-        title:         String(g.name ?? g.title ?? ''),
-        description:   g.description ? String(g.description) : undefined,
-        targetAmount:  Number(g.target_amount ?? g.targetAmount ?? 0),
+        id: String(g.id ?? ''),
+        title: String(g.name ?? g.title ?? ''),
+        targetAmount: Number(g.target_amount ?? g.targetAmount ?? 0),
         currentAmount: Number(g.current_amount ?? g.currentAmount ?? 0),
-        deadline:      String(g.deadline ?? ''),
-        priority:      (g.priority as Goal['priority']) || 'medium',
-        status:        (g.status as Goal['status']) || 'active',
-        createdAt:     String(g.created_at ?? g.createdAt ?? ''),
-        updatedAt:     String(g.updated_at ?? g.updatedAt ?? ''),
+        deadline: String(g.deadline ?? ''),
+        priority: (g.priority as Goal['priority']) || 'medium',
+        status: (g.status as Goal['status']) || 'active',
+        createdAt: String(g.created_at ?? g.createdAt ?? ''),
+        updatedAt: String(g.updated_at ?? g.updatedAt ?? ''),
       }));
 
       setTransactions(txns as Transaction[]);
@@ -104,763 +165,718 @@ export default function ReportsPage() {
     })();
   }, []);
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82ca9d', '#ef4444', '#10b981', '#6366f1', '#f59e0b'];
+  const today = todayKey();
 
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
+  // Account and user filters apply to every figure; the period applies to everything time-based.
+  const scoped = useMemo<Row[]>(() => transactions
+    .map(t => ({ ...t, day: dayKeyOf(t.date) }))
+    .filter(t => t.day)
+    .filter(t => accountId === 'all' || t.accountId === accountId || t.toAccountId === accountId)
+    .filter(t => userId === 'all' || t.userId === userId), [transactions, accountId, userId]);
 
-  const currentMonthTransactions = useMemo(
-    () =>
-      transactions.filter((t) => {
-        const d = new Date(t.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-      }),
-    [transactions, currentMonth, currentYear]
+  const effectiveRange = useMemo<DayRange>(() => {
+    if (range) return range;
+    const first = scoped.reduce((min, t) => (t.day < min ? t.day : min), today);
+    return { start: first, end: today };
+  }, [range, scoped, today]);
+
+  const current = useMemo(() => scoped.filter(t => inRange(t.day, range)), [scoped, range]);
+  const comparison = range ? previousPeriod(range) : null;
+  const previous = useMemo(
+    () => (comparison ? scoped.filter(t => inRange(t.day, comparison)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scoped, comparison?.start, comparison?.end],
   );
 
-  const getCurrentMonthData = () => {
-    const income = currentMonthTransactions.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const expenses = currentMonthTransactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const netIncome = income - expenses;
-    const savingsRate = income > 0 ? (netIncome / income) * 100 : 0;
-    return { income, expenses, netIncome, savingsRate };
-  };
+  const cur = summarize(current);
+  const prev = previous ? summarize(previous) : null;
+  const savingsRate = cur.income > 0 ? (cur.netSavings / cur.income) * 100 : null;
+  const prevSavingsRate = prev && prev.income > 0 ? (prev.netSavings / prev.income) * 100 : null;
+  const elapsedDays = dayCount({ start: effectiveRange.start, end: effectiveRange.end > today ? today : effectiveRange.end });
+  const avgDailyExpense = elapsedDays > 0 ? cur.expense / elapsedDays : 0;
+  const prevAvgDailyExpense = prev && comparison ? prev.expense / dayCount(comparison) : null;
 
-  const getMonthlyTrend = () => {
-    const monthlyData = [];
-    const baseline = new Date();
+  const periodLabel = range ? (matchPreset(range) ? `${matchPreset(range)!.label}, ${formatDayRange(range)}` : formatDayRange(range)) : 'All time';
 
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date(baseline.getFullYear(), baseline.getMonth() - i, 1);
-      const monthTransactions = transactions.filter((t) => {
-        const td = new Date(t.date);
-        return td.getMonth() === date.getMonth() && td.getFullYear() === date.getFullYear();
-      });
-
-      const income = monthTransactions.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expenses = monthTransactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-
-      monthlyData.push({
-        month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-        income,
-        expenses,
-        net: income - expenses,
-      });
+  // Trend buckets
+  const days = dayCount(effectiveRange);
+  const granularity: Granularity = days <= 62 ? 'day' : days <= 1100 ? 'month' : 'year';
+  const trend = useMemo(() => {
+    const totals = new Map<string, { income: number; expense: number }>();
+    for (const t of current) {
+      if (t.type !== 'income' && t.type !== 'expense') continue;
+      const key = bucketOf(t.day, granularity);
+      const entry = totals.get(key) ?? { income: 0, expense: 0 };
+      entry[t.type] += t.amount;
+      totals.set(key, entry);
     }
+    return bucketsFor(effectiveRange, granularity).map(b => {
+      const v = totals.get(b.key) ?? { income: 0, expense: 0 };
+      return { ...b, income: v.income, expense: v.expense, net: v.income - v.expense };
+    });
+  }, [current, effectiveRange, granularity]);
 
-    return monthlyData;
-  };
-
-  // Build per-category stats using categories from Settings
-  const categoryStats = useMemo(() => {
-    const stats = categories.map((cat) => {
-      const catTxs = transactions.filter((t) => t.categoryId === cat.id || (t.categoryName && t.categoryName.toLowerCase() === cat.name.toLowerCase()));
-      const income = catTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
-      const expense = catTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
-      const count = catTxs.length;
-      return {
-        id: cat.id,
-        name: cat.name,
-        color: cat.color,
-        income,
-        expense,
-        net: income - expense,
-        count,
+  // Category analysis (income and expense transactions only; loans are in Cash flow)
+  const categoryRows = useMemo(() => {
+    const byKey = new Map<string, { id: string; name: string; color: string; income: number; expense: number; count: number }>();
+    const findCategory = (t: Row) => categories.find(c => c.id === t.categoryId)
+      || categories.find(c => t.categoryName && c.name.toLowerCase() === t.categoryName.toLowerCase());
+    for (const t of current) {
+      if (t.type !== 'income' && t.type !== 'expense') continue;
+      const cat = findCategory(t);
+      const id = cat?.id ?? 'uncategorized';
+      const entry = byKey.get(id) ?? {
+        id, name: cat?.name ?? (t.categoryName || 'Uncategorized'), color: cat?.color ?? t.categoryColor ?? '#9ca3af',
+        income: 0, expense: 0, count: 0,
       };
-    });
-
-    const knownCategoryIds = new Set(categories.map(c => c.id));
-    const knownCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
-    const uncategorizedTxs = transactions.filter(t => (!t.categoryId && !t.categoryName) || (!knownCategoryIds.has(t.categoryId) && !knownCategoryNames.has((t.categoryName || '').toLowerCase())));
-    if (uncategorizedTxs.length > 0) {
-      const income = uncategorizedTxs.filter((t) => t.type === 'income' || t.type === 'loan_received').reduce((sum, t) => sum + t.amount, 0);
-      const expense = uncategorizedTxs.filter((t) => t.type === 'expense' || t.type === 'loan_given' || t.type === 'loan_repaid').reduce((sum, t) => sum + t.amount, 0);
-      stats.push({
-        id: 'uncategorized',
-        name: 'Uncategorized',
-        color: '#6B7280',
-        income,
-        expense,
-        net: income - expense,
-        count: uncategorizedTxs.length,
-      });
+      entry[t.type] += t.amount;
+      entry.count += 1;
+      byKey.set(id, entry);
     }
+    return [...byKey.values()].map(r => ({ ...r, net: r.income - r.expense }));
+  }, [current, categories]);
 
-    const totalIncome = stats.reduce((sum, s) => sum + s.income, 0);
-    const totalExpense = stats.reduce((sum, s) => sum + s.expense, 0);
+  const sortedCategories = useMemo(() => [...categoryRows].sort((a, b) => {
+    const dir = sort.desc ? -1 : 1;
+    if (sort.key === 'name') return a.name.localeCompare(b.name) * dir;
+    return (a[sort.key] - b[sort.key]) * dir;
+  }), [categoryRows, sort]);
 
-    return stats
-      .map((s) => ({
-        ...s,
-        pctIncome: totalIncome > 0 ? (s.income / totalIncome) * 100 : 0,
-        pctExpense: totalExpense > 0 ? (s.expense / totalExpense) * 100 : 0,
-      }))
-      .filter((s) => s.income > 0 || s.expense > 0);
-  }, [transactions, categories]);
+  const expenseRanking = useMemo(() => {
+    const ranked = categoryRows.filter(r => r.expense > 0).sort((a, b) => b.expense - a.expense);
+    const top = ranked.slice(0, 7);
+    const rest = ranked.slice(7);
+    if (rest.length) top.push({ id: 'other', name: rest.length === 1 ? rest[0].name : `${rest.length} other categories`, color: '', income: 0, count: 0, net: 0, expense: rest.reduce((s, r) => s + r.expense, 0) });
+    return top;
+  }, [categoryRows]);
 
-  // Totals for the Category-wise Breakdown (All Time)
-  const categoryTotalsAllTime = useMemo(() => {
-    const income = categoryStats.reduce((sum, s) => sum + s.income, 0);
-    const expense = categoryStats.reduce((sum, s) => sum + s.expense, 0);
-    return { income, expense };
-  }, [categoryStats]);
-  const allTimeIncome = transactions.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const allTimeExpense = transactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-  const allTimeNet = allTimeIncome - allTimeExpense;
-  const allTimeExpenseRatio = allTimeIncome > 0 ? (allTimeExpense / allTimeIncome) * 100 : 0;
-
-  // Expense breakdown (Pie) using stats
-  const expenseBreakdown = useMemo(
-    () =>
-      categoryStats
-        .filter((s) => s.expense > 0)
-        .map((s) => ({ name: s.name, value: s.expense, percentage: s.pctExpense, color: s.color })),
-    [categoryStats]
-  );
-
-  // Income breakdown (Pie) using stats
-  const incomeBreakdown = useMemo(
-    () =>
-      categoryStats
-        .filter((s) => s.income > 0)
-        .map((s) => ({ name: s.name, value: s.income, percentage: s.pctIncome, color: s.color })),
-    [categoryStats]
-  );
-
-  // Category performance for current month
-  const categoryPerformanceMonthly = useMemo(() => {
-    const perCat = categories.map((cat) => {
-      const catTxs = currentMonthTransactions.filter((t) => t.categoryId === cat.id);
-      const income = catTxs.filter((t) => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-      const expense = catTxs.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-      return { name: cat.name, income, expense, color: cat.color };
-    });
-
-    return perCat
-      .filter((c) => c.expense > 0 || c.income > 0)
-      .sort((a, b) => b.expense - a.expense)
-      .slice(0, 10);
-  }, [categories, currentMonthTransactions]);
-
-  const getDailySpendingTrend = () => {
-    const dailyData = [];
-    const baseline = new Date();
-
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date(baseline);
-      date.setDate(date.getDate() - i);
-
-      const dayTransactions = transactions.filter((t) => {
-        const td = new Date(t.date);
-        return td.toDateString() === date.toDateString();
-      });
-
-      const spending = dayTransactions.filter((t) => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-
-      dailyData.push({
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        spending,
-      });
+  const userRows = useMemo(() => {
+    const byUser = new Map<string, { name: string; income: number; expense: number }>();
+    for (const t of current) {
+      if (t.type !== 'income' && t.type !== 'expense') continue;
+      const name = users.find(u => u.id === t.userId)?.name || t.userName || 'Unassigned';
+      const entry = byUser.get(name) ?? { name, income: 0, expense: 0 };
+      entry[t.type] += t.amount;
+      byUser.set(name, entry);
     }
+    return [...byUser.values()].sort((a, b) => b.expense - a.expense);
+  }, [current, users]);
 
-    return dailyData;
+  // Goals pace uses the last 30 days of savings
+  const dailySavings = useMemo(() => {
+    const since = addDays(today, -29);
+    const recent = summarize(scoped.filter(t => t.day >= since && t.day <= today));
+    return recent.netSavings / 30;
+  }, [scoped, today]);
+
+  const openLoans = loans.map(l => ({ ...l, remaining: loanRemaining(l) })).filter(l => l.remaining > 0).sort((a, b) => b.remaining - a.remaining);
+  const activeGoals = goals.filter(g => g.status === 'active');
+  const totalBalance = accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
+  const filtersActive = accountId !== 'all' || userId !== 'all';
+
+  const exportStatement = () => {
+    const period = createStatementPeriod(effectiveRange.start, effectiveRange.end);
+    downloadStatementPDF(current, users, categories, period);
   };
 
-  const getLoansSummary = () => {
-    return loanSummary(loans as unknown as Parameters<typeof loanSummary>[0]);
-  };
+  const toggleSort = (key: typeof sort.key) =>
+    setSort(s => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== 'name' }));
 
-  const getActivitySummary = () => {
-    const totalTransactions = transactions.length;
-    const monthlyTransactions = currentMonthTransactions.length;
-
-    const avgDailySpending = getDailySpendingTrend().reduce((sum, day) => sum + day.spending, 0) / 30;
-
-    const activeUsers = users.filter((user) => transactions.some((t) => t.userId === user.id)).length;
-
-    return { totalTransactions, monthlyTransactions, avgDailySpending, activeUsers };
-  };
-
-  // Goals summary for reports
-  const goalsSummary = useMemo(() => {
-    const activeGoals = goals.filter(g => g.status === 'active');
-    const completedGoals = goals.filter(g => g.status === 'completed');
-    const totalTarget = activeGoals.reduce((sum, g) => sum + g.targetAmount, 0);
-    const totalSaved = activeGoals.reduce((sum, g) => sum + g.currentAmount, 0);
-    const overallProgress = totalTarget > 0 ? (totalSaved / totalTarget) * 100 : 0;
-
-    // Daily savings rate
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentTxs = transactions.filter(t => new Date(t.date) >= thirtyDaysAgo);
-    const recentIncome = recentTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const recentExpenses = recentTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const dailySavings = (recentIncome - recentExpenses) / 30;
-
-    return {
-      total: goals.length,
-      active: activeGoals.length,
-      completed: completedGoals.length,
-      totalTarget,
-      totalSaved,
-      overallProgress,
-      dailySavings,
-      activeGoals,
-    };
-  }, [goals, transactions]);
-
-  const monthSummary = getCurrentMonthData();
-  const loansSummary = getLoansSummary();
-  const activitySummary = getActivitySummary();
+  const maxExpense = expenseRanking[0]?.expense ?? 0;
+  const totalExpense = categoryRows.reduce((s, r) => s + r.expense, 0);
+  const totalIncome = categoryRows.reduce((s, r) => s + r.income, 0);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Financial Reports</h1>
+    <>
+      <ControlPanel title="Reports">
+        <DateRangePicker
+          value={range}
+          onChange={setRange}
+          clearLabel="All time"
+          presets={REPORT_PRESETS}
+          className="h-8 w-full text-[13px] sm:w-auto sm:min-w-64"
+        />
+        <Select value={accountId} onValueChange={setAccountId}>
+          <SelectTrigger className="h-8 w-full text-[13px] sm:w-44" aria-label="Account">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All accounts</SelectItem>
+            {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={userId} onValueChange={setUserId}>
+          <SelectTrigger className="h-8 w-full text-[13px] sm:w-44" aria-label="User">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All users</SelectItem>
+            {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {filtersActive && (
+          <Button variant="ghost" size="sm" onClick={() => { setAccountId('all'); setUserId('all'); }}>
+            <X className="mr-1 h-4 w-4" aria-hidden />
+            Clear filters
+          </Button>
+        )}
+        <div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="sm">
+                <Download className="h-4 w-4" aria-hidden />
+                Export
+                <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={current.length === 0} onSelect={exportStatement}>Statement (PDF)</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => generateCategoryBreakdownPDF(current, categories, periodLabel)}>
+                Category breakdown (PDF)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </ControlPanel>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">All-Time Income</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(allTimeIncome)}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">All-Time Expense</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(allTimeExpense)}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">All-Time Net</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${allTimeNet >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrency(Math.abs(allTimeNet))}
-            </div>
-            <p className="text-xs text-muted-foreground">{allTimeNet >= 0 ? 'Surplus' : 'Deficit'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Expense Ratio</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${allTimeExpenseRatio <= 100 ? 'text-green-600' : 'text-red-600'}`}>
-              {allTimeExpenseRatio.toFixed(1)}%
-            </div>
-            <p className="text-xs text-muted-foreground">Expense vs income across all time</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Current Month Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">This Month's Income</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(monthSummary.income)}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">This Month's Expenses</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(monthSummary.expenses)}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Income</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${monthSummary.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrency(Math.abs(monthSummary.netIncome))}
-            </div>
-            <p className="text-xs text-muted-foreground">{monthSummary.netIncome >= 0 ? 'Surplus' : 'Deficit'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Savings Rate</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${monthSummary.savingsRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {monthSummary.savingsRate.toFixed(1)}%
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Goals Summary in Reports */}
-      {goalsSummary.total > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PiggyBank className="h-5 w-5 text-purple-600" />
-              Savings Goals Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                <p className="text-2xl font-bold text-purple-600">{goalsSummary.active}</p>
-                <p className="text-xs text-muted-foreground">Active Goals</p>
-              </div>
-              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">{goalsSummary.completed}</p>
-                <p className="text-xs text-muted-foreground">Completed</p>
-              </div>
-              <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <p className="text-2xl font-bold text-blue-600">{goalsSummary.overallProgress.toFixed(1)}%</p>
-                <p className="text-xs text-muted-foreground">Overall Progress</p>
-              </div>
-              <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                <p className={`text-2xl font-bold ${goalsSummary.dailySavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(Math.abs(goalsSummary.dailySavings))}
-                </p>
-                <p className="text-xs text-muted-foreground">Daily Savings Rate</p>
-              </div>
-            </div>
-
-            {goalsSummary.activeGoals.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold">Active Goals Progress</h3>
-                {goalsSummary.activeGoals.map(goal => {
-                  const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-                  const remaining = goal.targetAmount - goal.currentAmount;
-                  const deadlineDate = new Date(goal.deadline);
-                  const daysRemaining = Math.max(0, Math.ceil((deadlineDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-                  const dailyNeeded = daysRemaining > 0 ? remaining / daysRemaining : remaining;
-                  const isOnTrack = goalsSummary.dailySavings >= dailyNeeded;
-
-                  return (
-                    <div key={goal.id} className="p-3 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm">{goal.title}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={isOnTrack ? 'default' : 'destructive'} className="text-xs">
-                            {isOnTrack ? 'On Track' : 'Behind'}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">{daysRemaining}d left</span>
-                        </div>
-                      </div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>{formatCurrency(goal.currentAmount)}</span>
-                        <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
-                      </div>
-                      <Progress value={Math.min(progress, 100)} className="h-2 mb-1" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{progress.toFixed(1)}%</span>
-                        <span>Need {formatCurrency(dailyNeeded)}/day</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Loans & Receivables Portfolio */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Banknote className="h-5 w-5 text-amber-600" />
-              Loans & Receivables Portfolio
-            </span>
-            <Badge variant={loansSummary.netPosition >= 0 ? "default" : "destructive"}>
-              Net Position: {loansSummary.netPosition >= 0 ? '+' : ''}{formatCurrency(loansSummary.netPosition)}
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
-              <p className="text-xs text-muted-foreground font-medium">Outstanding Given (Receivables)</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(loansSummary.outstandingGiven)}</p>
-              <p className="text-xs text-muted-foreground mt-1">Lent to others (pending)</p>
-            </div>
-            <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-xs text-muted-foreground font-medium">Outstanding Taken (Payables)</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(loansSummary.outstandingTaken)}</p>
-              <p className="text-xs text-muted-foreground mt-1">Borrowed from others (pending)</p>
-            </div>
-            <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <p className="text-xs text-muted-foreground font-medium">Net Loan Position</p>
-              <p className={`text-2xl font-bold mt-1 ${loansSummary.netPosition >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {loansSummary.netPosition >= 0 ? '+' : ''}{formatCurrency(loansSummary.netPosition)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {loansSummary.netPosition >= 0 ? 'You are owed' : 'You owe'}
-              </p>
-            </div>
-            <div className="p-4 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-              <p className="text-xs text-muted-foreground font-medium">Estimated Net Worth</p>
-              <p className="text-2xl font-bold text-purple-600 mt-1">
-                {formatCurrency(accounts.reduce((s, a) => s + (a.balance ?? 0), 0) + loansSummary.netPosition)}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Liquid Funds + Net Loans</p>
-            </div>
+      <PageBody>
+      {/* Key figures */}
+      <section className="overflow-hidden rounded-lg border bg-card" aria-label="Key figures">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b px-4 py-2.5 text-sm">
+          <span className="font-medium">{periodLabel}</span>
+          {comparison && <span className="text-muted-foreground">Compared with {formatDayRange(comparison)}</span>}
+        </div>
+        <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-3 xl:grid-cols-6">
+          <div className="col-span-2 bg-card p-4">
+            <p className="text-sm text-muted-foreground">Net result</p>
+            <p className={`mt-1 text-4xl font-semibold ${cur.netSavings < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+              {signedCurrency(cur.netSavings)}
+            </p>
+            {prev && <Delta value={cur.netSavings - prev.netSavings} format={n => `${n > 0 ? '+' : n < 0 ? '-' : ''}${formatCurrency(Math.abs(n))}`} upIsGood />}
           </div>
+          <Kpi label="Income" value={formatCurrency(cur.income)}>
+            {prev && <PercentDelta current={cur.income} previous={prev.income} upIsGood />}
+          </Kpi>
+          <Kpi label="Expenses" value={formatCurrency(cur.expense)}>
+            {prev && <PercentDelta current={cur.expense} previous={prev.expense} upIsGood={false} />}
+          </Kpi>
+          <Kpi label="Savings rate" value={savingsRate === null ? '—' : `${savingsRate.toFixed(1)}%`}>
+            {prev && savingsRate !== null && prevSavingsRate !== null && (
+              <Delta value={savingsRate - prevSavingsRate} format={n => `${n > 0 ? '+' : n < 0 ? '-' : ''}${Math.abs(n).toFixed(1)} pts`} upIsGood />
+            )}
+          </Kpi>
+          <Kpi label="Average daily expense" value={formatCurrency(avgDailyExpense)}>
+            {prevAvgDailyExpense !== null && <PercentDelta current={avgDailyExpense} previous={prevAvgDailyExpense} upIsGood={false} />}
+          </Kpi>
+        </div>
+      </section>
 
-          {loans.filter(l => isLoanOpen(l)).length > 0 && (
-            <div className="space-y-3 mt-4">
-              <h3 className="text-sm font-semibold text-foreground">Active Loan Commitments</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {loans.filter(l => isLoanOpen(l)).map(loan => {
-                  const remaining = loanRemaining(loan);
-                  const repaid = Number(loan.repaid_amount || 0);
-                  const pct = loan.amount > 0 ? (repaid / loan.amount) * 100 : 0;
-                  return (
-                    <div key={loan.id} className="p-3 border rounded-lg bg-card/50 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={loan.type === 'given' ? 'default' : 'destructive'} className="text-xs">
-                            {loan.type === 'given' ? 'LENT' : 'BORROWED'}
-                          </Badge>
-                          <span className="font-semibold text-sm">{loan.person || 'Contact'}</span>
-                        </div>
-                        <span className={`font-bold text-sm ${loan.type === 'given' ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatCurrency(remaining)} remaining
-                        </span>
-                      </div>
-                      {repaid > 0 && (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>Repaid: {formatCurrency(repaid)} / {formatCurrency(loan.amount)}</span>
-                            <span>{pct.toFixed(0)}%</span>
-                          </div>
-                          <Progress value={pct} className="h-1.5" />
-                        </div>
-                      )}
-                      {loan.due_date && (
-                        <p className="text-xs text-muted-foreground">
-                          Due: {new Date(loan.due_date).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+      {/* Trend + expense ranking */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Panel
+          className="xl:col-span-2"
+          title="Income and expenses"
+          actions={
+            <div className="flex items-center gap-4">
+              {trendView === 'graph' && (
+                <div className="hidden items-center gap-3 text-xs text-muted-foreground sm:flex">
+                  <LegendKey color={colors.income} label="Income" />
+                  <LegendKey color={colors.expense} label="Expenses" />
+                </div>
+              )}
+              <ViewSwitch value={trendView} onChange={setTrendView} />
+            </div>
+          }
+        >
+          {trendView === 'graph' ? (
+            <div className="h-full min-h-72 px-2 pb-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trend} barGap={2} barCategoryGap="25%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid vertical={false} stroke={colors.grid} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={{ stroke: colors.axis }} tick={{ fill: colors.tick, fontSize: 12 }} minTickGap={16} />
+                  <YAxis tickLine={false} axisLine={false} tick={{ fill: colors.tick, fontSize: 12 }} tickFormatter={v => compact.format(Number(v))} width={48} />
+                  <RechartsTooltip cursor={{ fill: colors.cursor }} content={<TrendTooltip colors={colors} />} />
+                  <Bar dataKey="income" name="Income" fill={colors.income} radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
+                  <Bar dataKey="expense" name="Expenses" fill={colors.expense} radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="max-h-80 overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-card">
+                  <TableRow>
+                    <TableHead className="pl-4">{granularity === 'day' ? 'Day' : granularity === 'month' ? 'Month' : 'Year'}</TableHead>
+                    <TableHead className="text-right">Income</TableHead>
+                    <TableHead className="text-right">Expenses</TableHead>
+                    <TableHead className="pr-4 text-right">Net</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {trend.map(b => (
+                    <TableRow key={b.key}>
+                      <TableCell className="pl-4">{b.long}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(b.income)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(b.expense)}</TableCell>
+                      <TableCell className={`pr-4 text-right tabular-nums ${b.net < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>{signedCurrency(b.net)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="pl-4">Total</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(cur.income)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(cur.expense)}</TableCell>
+                    <TableCell className="pr-4 text-right tabular-nums">{signedCurrency(cur.netSavings)}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </Panel>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Income vs Expenses (Last 12 Months)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={getMonthlyTrend()}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Legend />
-                <Bar dataKey="income" fill="#10b981" name="Income" />
-                <Bar dataKey="expenses" fill="#ef4444" name="Expenses" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Category-wise Expense Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={expenseBreakdown}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percentage }) => `${name} ${percentage.toFixed(1)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {expenseBreakdown.map((entry, index) => (
-                    <Cell key={`exp-cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Category-wise Income Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={incomeBreakdown}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percentage }) => `${name} ${percentage.toFixed(1)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {incomeBreakdown.map((entry, index) => (
-                    <Cell key={`inc-cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Category Performance (This Month)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart
-                data={categoryPerformanceMonthly}
-                layout="vertical"
-                margin={{ top: 8, right: 16, bottom: 8, left: 80 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={100} />
-                <Legend />
-                <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="expense" fill="#ef4444" name="Expense" />
-                <Bar dataKey="income" fill="#10b981" name="Income" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Spending Trend (Last 30 Days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={getDailySpendingTrend()}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Line type="monotone" dataKey="spending" stroke="#ef4444" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Net Income Trend (Last 12 Months)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={getMonthlyTrend()}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Line type="monotone" dataKey="net" stroke="#8884d8" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <Panel title="Expenses by category">
+          {expenseRanking.length === 0 ? (
+            <Empty>No expenses in this period.</Empty>
+          ) : (
+            <ul className="space-y-3 px-4 pb-4">
+              {expenseRanking.map(r => (
+                <li key={r.id} className="text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="truncate">{r.name}</span>
+                    <span className="shrink-0 tabular-nums">
+                      {formatCurrency(r.expense)}
+                      <span className="ml-2 inline-block w-12 text-right text-muted-foreground">
+                        {totalExpense > 0 ? `${((r.expense / totalExpense) * 100).toFixed(1)}%` : '—'}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="mt-1 h-2 rounded-full bg-muted">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{ width: `${maxExpense > 0 ? Math.max(2, (r.expense / maxExpense) * 100) : 0}%`, backgroundColor: colors.expense }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Loans Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Total Given:</span>
-              <span className="text-green-600 font-bold">{formatCurrency(loansSummary.outstandingGiven)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Total Taken:</span>
-              <span className="text-red-600 font-bold">{formatCurrency(loansSummary.outstandingTaken)}</span>
-            </div>
-            <div className="flex justify-between items-center border-t pt-2">
-              <span className="text-sm font-medium">Net Position:</span>
-              <span className={`font-bold ${loansSummary.netPosition >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCurrency(Math.abs(loansSummary.netPosition))}
-                <Badge variant="outline" className="ml-2">
-                  {loansSummary.netPosition >= 0 ? 'You are owed' : 'You owe'}
-                </Badge>
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Net result + cash flow */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Panel className="xl:col-span-2" title="Net result">
+          <div className="h-56 px-2 pb-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={trend} barCategoryGap="25%" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid vertical={false} stroke={colors.grid} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: colors.tick, fontSize: 12 }} minTickGap={16} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fill: colors.tick, fontSize: 12 }} tickFormatter={v => compact.format(Number(v))} width={48} />
+                <ReferenceLine y={0} stroke={colors.axis} />
+                <RechartsTooltip cursor={{ fill: colors.cursor }} content={<NetTooltip />} />
+                <Bar
+                  dataKey="net"
+                  name="Net result"
+                  isAnimationActive={false}
+                  maxBarSize={24}
+                  shape={(props: unknown) => <DataEndBar {...(props as DataEndBarProps)} positive={colors.income} negative={colors.negative} />}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium flex items-center">
-                <Activity className="mr-2 h-4 w-4" />
-                Total Transactions:
-              </span>
-              <span className="font-bold">{activitySummary.totalTransactions}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">This Month:</span>
-              <span className="font-bold">{activitySummary.monthlyTransactions}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Avg Daily Spending:</span>
-              <span className="font-bold">{formatCurrency(activitySummary.avgDailySpending)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium flex items-center">
-                <UsersIcon className="mr-2 h-4 w-4" />
-                Active Users:
-              </span>
-              <span className="font-bold">{activitySummary.activeUsers}</span>
-            </div>
-          </CardContent>
-        </Card>
+        <Panel title="Cash flow">
+          <Table>
+            <TableBody>
+              <FlowRow label="Income" value={cur.income} />
+              <FlowRow label="Expenses" value={-cur.expense} />
+              {(cur.loanTaken > 0 || prev?.loanTaken) ? <FlowRow label="Borrowed" value={cur.loanTaken} /> : null}
+              {(cur.loanReceived > 0 || prev?.loanReceived) ? <FlowRow label="Repayments received" value={cur.loanReceived} /> : null}
+              {(cur.loanGiven > 0 || prev?.loanGiven) ? <FlowRow label="Lent" value={-cur.loanGiven} /> : null}
+              {(cur.loanRepaid > 0 || prev?.loanRepaid) ? <FlowRow label="Repayments made" value={-cur.loanRepaid} /> : null}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell className="pl-4">Net cash flow</TableCell>
+                <TableCell className={`pr-4 text-right tabular-nums ${cur.netCashFlow < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                  {signedCurrency(cur.netCashFlow)}
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+          <p className="px-4 py-3 text-xs text-muted-foreground">Transfers between your own accounts are left out.</p>
+        </Panel>
+      </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Category Performance (Top 5 by Expense)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {categoryPerformanceMonthly.slice(0, 5).map((cat, index) => (
-                <div key={`${cat.name}-${index}`} className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div
-                      className="w-3 h-3 rounded-full mr-2"
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                    />
-                    <span className="text-sm font-medium">{cat.name}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">Expense</div>
-                    <div className="text-sm font-bold">{formatCurrency(cat.expense)}</div>
-                    {cat.income > 0 && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Income: <span className="font-semibold">{formatCurrency(cat.income)}</span>
+      {/* Category analysis */}
+      <Panel
+        title="Category analysis"
+        actions={
+          <Button variant="ghost" size="sm" className="-mr-2 h-8" onClick={() => generateCategoryBreakdownPDF(current, categories, periodLabel)}>
+            <Download className="mr-2 h-4 w-4" aria-hidden />
+            PDF
+          </Button>
+        }
+      >
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <SortHead label="Category" sortKey="name" sort={sort} onSort={toggleSort} className="pl-4" />
+              <SortHead label="Transactions" sortKey="count" sort={sort} onSort={toggleSort} align="right" />
+              <SortHead label="Income" sortKey="income" sort={sort} onSort={toggleSort} align="right" />
+              <SortHead label="Expenses" sortKey="expense" sort={sort} onSort={toggleSort} align="right" />
+              <SortHead label="Net" sortKey="net" sort={sort} onSort={toggleSort} align="right" />
+              <TableHead className="hidden w-48 pr-4 md:table-cell">Share of expenses</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedCategories.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No income or expenses in this period.</TableCell>
+              </TableRow>
+            ) : sortedCategories.map(r => {
+              const share = totalExpense > 0 ? (r.expense / totalExpense) * 100 : 0;
+              return (
+                <TableRow key={r.id}>
+                  <TableCell className="pl-4">
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.color }} aria-hidden />
+                      {r.name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{r.count}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.income ? formatCurrency(r.income) : '—'}</TableCell>
+                  <TableCell className="text-right tabular-nums">{r.expense ? formatCurrency(r.expense) : '—'}</TableCell>
+                  <TableCell className={`text-right tabular-nums ${r.net < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>{signedCurrency(r.net)}</TableCell>
+                  <TableCell className="hidden pr-4 md:table-cell">
+                    {r.expense > 0 && (
+                      <div className="flex items-center gap-2">
+                        <div className="h-1.5 flex-1 rounded-full bg-muted">
+                          <div className="h-1.5 rounded-full" style={{ width: `${share}%`, backgroundColor: colors.expense }} />
+                        </div>
+                        <span className="w-12 text-right text-xs tabular-nums text-muted-foreground">{share.toFixed(1)}%</span>
                       </div>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+          {sortedCategories.length > 0 && (
+            <TableFooter>
+              <TableRow>
+                <TableCell className="pl-4">Total</TableCell>
+                <TableCell className="text-right tabular-nums">{categoryRows.reduce((s, r) => s + r.count, 0)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(totalIncome)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(totalExpense)}</TableCell>
+                <TableCell className="text-right tabular-nums">{signedCurrency(totalIncome - totalExpense)}</TableCell>
+                <TableCell className="hidden pr-4 md:table-cell" />
+              </TableRow>
+            </TableFooter>
+          )}
+        </Table>
+      </Panel>
+
+      {/* By user, accounts, loans */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel title="By user">
+          {userRows.length === 0 ? <Empty>No income or expenses in this period.</Empty> : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">User</TableHead>
+                  <TableHead className="text-right">Income</TableHead>
+                  <TableHead className="pr-4 text-right">Expenses</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {userRows.map(u => (
+                  <TableRow key={u.name}>
+                    <TableCell className="pl-4">{u.name}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(u.income)}</TableCell>
+                    <TableCell className="pr-4 text-right tabular-nums">{formatCurrency(u.expense)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Panel>
+
+        <Panel title="Account balances" note="Today">
+          {accounts.length === 0 ? <Empty>No accounts yet.</Empty> : (
+            <Table>
+              <TableBody>
+                {accounts.map(a => (
+                  <TableRow key={a.id} className={accountId === a.id ? 'bg-muted/50' : undefined}>
+                    <TableCell className="pl-4">
+                      <span className="flex items-center gap-2">
+                        <AccountAvatar name={a.name} bankName={a.bankName} color={a.color} size="xs" />
+                        {a.name}
+                      </span>
+                    </TableCell>
+                    <TableCell className={`pr-4 text-right tabular-nums ${(a.balance ?? 0) < 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                      {signedCurrency(a.balance ?? 0)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="pl-4">Total</TableCell>
+                  <TableCell className="pr-4 text-right tabular-nums">{signedCurrency(totalBalance)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          )}
+        </Panel>
+
+        <Panel title="Open loans" note="Today">
+          {openLoans.length === 0 ? <Empty>No open loans.</Empty> : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">Person</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="pr-4 text-right">Remaining</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {openLoans.slice(0, 8).map(l => (
+                  <TableRow key={l.id}>
+                    <TableCell className="pl-4">
+                      {l.person || 'Contact'}
+                      {l.dueDate && <span className="block text-xs text-muted-foreground">Due {formatDayKey(dayKeyOf(l.dueDate))}</span>}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{l.type === 'given' ? 'Lent' : 'Borrowed'}</TableCell>
+                    <TableCell className="pr-4 text-right tabular-nums">{formatCurrency(l.remaining)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Panel>
       </div>
 
-      {/* Category-wise Detailed Table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Category-wise Breakdown (All Time)</CardTitle>
-          <Button onClick={() => generateCategoryBreakdownPDF(transactions, categories)} variant="outline" size="sm">
-            <FileText className="mr-2 h-4 w-4" />
-            Export PDF Report
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left border-b">
-                  <th className="py-2 pr-4">Category</th>
-                  <th className="py-2 pr-4">Income</th>
-                  <th className="py-2 pr-4">Expense</th>
-                  <th className="py-2 pr-4">Net</th>
-                  <th className="py-2 pr-4">% of Total Income</th>
-                  <th className="py-2 pr-4">% of Total Expense</th>
-                  <th className="py-2 pr-4">Transactions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categoryStats.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-6 text-center text-muted-foreground">
-                      No category data yet. Add transactions and categories in Settings.
-                    </td>
-                  </tr>
-                ) : (
-                  categoryStats
-                    .sort((a, b) => b.expense - a.expense)
-                    .map((s, idx) => (
-                      <tr key={`${s.id}-${idx}`} className="border-b">
-                        <td className="py-2 pr-4">
-                          <div className="flex items-center gap-2">
-                            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
-                            {s.name}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-4 text-green-600 font-medium">{formatCurrency(s.income)}</td>
-                        <td className="py-2 pr-4 text-red-600 font-medium">{formatCurrency(s.expense)}</td>
-                        <td className={`py-2 pr-4 font-semibold ${s.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatCurrency(Math.abs(s.net))} {s.net >= 0 ? '(Surplus)' : '(Deficit)'}
-                        </td>
-                        <td className="py-2 pr-4">{s.pctIncome.toFixed(1)}%</td>
-                        <td className="py-2 pr-4">{s.pctExpense.toFixed(1)}%</td>
-                        <td className="py-2 pr-4">{s.count}</td>
-                      </tr>
-                    ))
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t">
-                  <td className="py-2 pr-4 font-semibold">Total</td>
-                  <td className="py-2 pr-4 text-green-700 font-semibold">{formatCurrency(categoryTotalsAllTime.income)}</td>
-                  <td className="py-2 pr-4 text-red-700 font-semibold">{formatCurrency(categoryTotalsAllTime.expense)}</td>
-                  <td className="py-2 pr-4"></td>
-                  <td className="py-2 pr-4"></td>
-                  <td className="py-2 pr-4"></td>
-                  <td className="py-2 pr-4"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      {activeGoals.length > 0 && (
+        <Panel title="Savings goals" note={`Pace from the last 30 days: ${signedCurrency(dailySavings)} a day`}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">Goal</TableHead>
+                <TableHead className="text-right">Saved</TableHead>
+                <TableHead className="text-right">Target</TableHead>
+                <TableHead className="hidden w-56 md:table-cell">Progress</TableHead>
+                <TableHead className="text-right">Needed a day</TableHead>
+                <TableHead className="pr-4">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {activeGoals.map(goal => {
+                const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+                const remaining = Math.max(0, goal.targetAmount - goal.currentAmount);
+                const deadline = dayKeyOf(goal.deadline);
+                const daysLeft = deadline ? Math.max(0, dayCount({ start: today, end: deadline }) - 1) : 0;
+                const needed = daysLeft > 0 ? remaining / daysLeft : remaining;
+                const onTrack = dailySavings >= needed;
+                return (
+                  <TableRow key={goal.id}>
+                    <TableCell className="pl-4">
+                      {goal.title}
+                      {deadline && <span className="block text-xs text-muted-foreground">By {formatDayKey(deadline)}, {daysLeft} days left</span>}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(goal.currentAmount)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(goal.targetAmount)}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex items-center gap-2">
+                        <Progress value={Math.min(progress, 100)} className="h-1.5 flex-1" />
+                        <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{progress.toFixed(0)}%</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(needed)}</TableCell>
+                    <TableCell className="pr-4">
+                      <span className={onTrack ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                        {onTrack ? 'On track' : 'Behind'}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Panel>
+      )}
+      </PageBody>
+    </>
+  );
+}
+
+/* ---------- building blocks ---------- */
+
+function Panel({ title, note, actions, className, children }: { title: string; note?: string; actions?: ReactNode; className?: string; children: ReactNode }) {
+  return (
+    <section className={`flex flex-col overflow-hidden rounded-lg border bg-card ${className ?? ''}`} aria-label={title}>
+      <header className="flex min-h-11 items-center justify-between gap-3 border-b bg-muted/40 px-4 py-2">
+        <h2 className="text-sm font-semibold">
+          {title}
+          {note && <span className="ml-2 font-normal text-muted-foreground">{note}</span>}
+        </h2>
+        {actions}
+      </header>
+      <div className="flex-1">{children}</div>
+    </section>
+  );
+}
+
+function Kpi({ label, value, children }: { label: string; value: string; children?: ReactNode }) {
+  return (
+    <div className="bg-card p-4">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold">{value}</p>
+      {children}
     </div>
   );
+}
+
+function Delta({ value, format, upIsGood }: { value: number; format: (n: number) => string; upIsGood: boolean }) {
+  if (!Number.isFinite(value)) return null;
+  const flat = Math.abs(value) < 0.005;
+  const good = flat ? null : (value > 0) === upIsGood;
+  const Icon = value > 0 ? ArrowUp : ArrowDown;
+  return (
+    <p className={`mt-1 flex items-center gap-1 text-xs ${good === null ? 'text-muted-foreground' : good ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+      {!flat && <Icon className="h-3 w-3" aria-hidden />}
+      {flat ? 'No change' : format(value)}
+    </p>
+  );
+}
+
+function PercentDelta({ current, previous, upIsGood }: { current: number; previous: number; upIsGood: boolean }) {
+  if (previous === 0) return <p className="mt-1 text-xs text-muted-foreground">{current === 0 ? 'No change' : 'Nothing in the previous period'}</p>;
+  return <Delta value={((current - previous) / previous) * 100} format={n => `${Math.abs(n).toFixed(1)}%`} upIsGood={upIsGood} />;
+}
+
+function LegendKey({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+function ViewSwitch({ value, onChange }: { value: 'graph' | 'table'; onChange: (v: 'graph' | 'table') => void }) {
+  return (
+    <div className="flex rounded-md border p-0.5" role="group" aria-label="View">
+      {(['graph', 'table'] as const).map(v => (
+        <button
+          key={v}
+          type="button"
+          aria-pressed={value === v}
+          onClick={() => onChange(v)}
+          className={`rounded px-2.5 py-1 text-xs capitalize transition-colors ${value === v ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SortHead({ label, sortKey, sort, onSort, align, className }: {
+  label: string;
+  sortKey: 'name' | 'count' | 'income' | 'expense' | 'net';
+  sort: { key: string; desc: boolean };
+  onSort: (key: 'name' | 'count' | 'income' | 'expense' | 'net') => void;
+  align?: 'right';
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  const Icon = sort.desc ? ArrowDown : ArrowUp;
+  return (
+    <TableHead
+      className={`${align === 'right' ? 'text-right' : ''} ${className ?? ''}`}
+      aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${active ? 'text-foreground' : ''}`}
+      >
+        {label}
+        {active && <Icon className="h-3 w-3" aria-hidden />}
+      </button>
+    </TableHead>
+  );
+}
+
+function FlowRow({ label, value }: { label: string; value: number }) {
+  return (
+    <TableRow>
+      <TableCell className="pl-4 text-muted-foreground">{label}</TableCell>
+      <TableCell className="pr-4 text-right tabular-nums">{signedCurrency(value)}</TableCell>
+    </TableRow>
+  );
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return <p className="px-4 pb-6 pt-2 text-sm text-muted-foreground">{children}</p>;
+}
+
+type TrendPoint = { long: string; income: number; expense: number; net: number };
+
+function TrendTooltip({ active, payload, colors }: TooltipProps<number, string> & { colors: typeof CHART.light }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload as TrendPoint;
+  return (
+    <div className="min-w-44 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
+      <p className="mb-1.5 text-muted-foreground">{point.long}</p>
+      <TooltipRow color={colors.income} label="Income" value={formatCurrency(point.income)} />
+      <TooltipRow color={colors.expense} label="Expenses" value={formatCurrency(point.expense)} />
+      <div className="mt-1.5 border-t pt-1.5">
+        <TooltipRow label="Net" value={signedCurrency(point.net)} />
+      </div>
+    </div>
+  );
+}
+
+function NetTooltip({ active, payload }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0].payload as TrendPoint;
+  return (
+    <div className="rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-sm">
+      <p className="mb-1 text-muted-foreground">{point.long}</p>
+      <p className="text-sm font-semibold tabular-nums">{signedCurrency(point.net)}</p>
+    </div>
+  );
+}
+
+function TooltipRow({ color, label, value }: { color?: string; label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-0.5">
+      <span className="flex items-center gap-2 text-muted-foreground">
+        {color && <span className="inline-block h-0.5 w-3 rounded" style={{ backgroundColor: color }} aria-hidden />}
+        {label}
+      </span>
+      <span className="font-semibold tabular-nums text-foreground">{value}</span>
+    </div>
+  );
+}
+
+type DataEndBarProps = { x?: number; y?: number; width?: number; height?: number; value?: number | number[]; positive: string; negative: string };
+
+/** A column with 4px rounded corners on the data end and a square baseline, for positive and negative values. */
+function DataEndBar({ x = 0, y = 0, width = 0, height = 0, value, positive, negative }: DataEndBarProps) {
+  const v = Array.isArray(value) ? value[1] - value[0] : Number(value ?? 0);
+  if (!width || !height || v === 0) return null;
+  const top = Math.min(y, y + height);
+  const h = Math.abs(height);
+  const r = Math.min(4, h, width / 2);
+  const right = x + width;
+  const bottom = top + h;
+  const d = v > 0
+    ? `M${x},${bottom} L${x},${top + r} Q${x},${top} ${x + r},${top} L${right - r},${top} Q${right},${top} ${right},${top + r} L${right},${bottom} Z`
+    : `M${x},${top} L${right},${top} L${right},${bottom - r} Q${right},${bottom} ${right - r},${bottom} L${x + r},${bottom} Q${x},${bottom} ${x},${bottom - r} Z`;
+  return <path d={d} fill={v > 0 ? positive : negative} />;
 }

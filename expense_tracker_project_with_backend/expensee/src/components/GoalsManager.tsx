@@ -10,6 +10,9 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { getTransactions, formatCurrency } from '@/lib/storage';
 import { apiClient } from '@/lib/api';
+import { formatDateDhaka } from '@/lib/dhakaTime';
+import { ControlPanel, PageBody, Scorecard, Sheet, Tag } from '@/components/erp';
+import { Star } from 'lucide-react';
 import { Goal, Transaction } from '@/types';
 import {
   Plus,
@@ -287,452 +290,295 @@ export default function GoalsManager({ onDataChange }: GoalsManagerProps) {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Savings Goals</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Goal
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {editingGoal ? 'Edit Goal' : 'Create New Savings Goal'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="goalTitle">Goal Title *</Label>
-                <Input
-                  id="goalTitle"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="e.g., New Laptop, Emergency Fund"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="goalDescription">Description</Label>
-                <Textarea
-                  id="goalDescription"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Optional description for your goal"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="goalTarget">Target Amount *</Label>
-                  <Input
-                    id="goalTarget"
-                    type="number"
-                    step="0.01"
-                    value={formData.targetAmount}
-                    onChange={(e) => setFormData({ ...formData, targetAmount: e.target.value })}
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="goalCurrent">Already Saved</Label>
-                  <Input
-                    id="goalCurrent"
-                    type="number"
-                    step="0.01"
-                    value={formData.currentAmount}
-                    onChange={(e) => setFormData({ ...formData, currentAmount: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="goalDeadline">Deadline *</Label>
-                  <Input
-                    id="goalDeadline"
-                    type="date"
-                    value={formData.deadline}
-                    onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="goalPriority">Priority</Label>
-                  <Select value={formData.priority} onValueChange={(value: 'low' | 'medium' | 'high') => setFormData({ ...formData, priority: value })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">🟢 Low</SelectItem>
-                      <SelectItem value="medium">🟡 Medium</SelectItem>
-                      <SelectItem value="high">🔴 High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Smart Preview */}
-              {formData.targetAmount && formData.deadline && (
-                <Card className="bg-muted/50">
-                  <CardContent className="pt-4 space-y-2">
-                    <p className="text-sm font-medium flex items-center gap-1">
-                      <Zap className="h-4 w-4 text-yellow-500" />
-                      Smart Savings Preview
-                    </p>
-                    {(() => {
-                      const target = parseFloat(formData.targetAmount) || 0;
-                      const current = parseFloat(formData.currentAmount || '0');
-                      const remaining = target - current;
-                      const deadlineDate = new Date(formData.deadline);
-                      const now = new Date();
-                      const daysLeft = Math.max(0, Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-                      const dailyNeeded = daysLeft > 0 ? remaining / daysLeft : remaining;
-                      const monthlyNeeded = dailyNeeded * 30;
-
-                      return (
-                        <div className="text-xs space-y-1 text-muted-foreground">
-                          <p>📅 {daysLeft} days until deadline</p>
-                          <p>💰 Need to save: {formatCurrency(dailyNeeded)}/day or {formatCurrency(monthlyNeeded)}/month</p>
-                          {financialInsights.dailySavings > 0 && (
-                            <p className={financialInsights.dailySavings >= dailyNeeded ? 'text-green-600' : 'text-red-600'}>
-                              {financialInsights.dailySavings >= dailyNeeded
-                                ? `✅ On track! Your current savings rate (${formatCurrency(financialInsights.dailySavings)}/day) is sufficient`
-                                : `⚠️ Need to save ${formatCurrency(dailyNeeded - financialInsights.dailySavings)} more per day`
-                              }
-                            </p>
-                          )}
-                          {financialInsights.dailySavings > 0 && (
-                            <p>🕐 At current rate: ~{Math.ceil(remaining / financialInsights.dailySavings)} days needed</p>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
+    <>
+      <ControlPanel
+        title="Savings goals"
+        actions={
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" onClick={resetForm}>
+                  <Plus className="h-4 w-4" aria-hidden />
+                  New
                 </Button>
-                <Button type="submit">
-                  {editingGoal ? 'Update Goal' : 'Create Goal'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-500/10 to-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Goals</CardTitle>
-            <Target className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{activeGoals.length}</div>
-            <p className="text-xs text-muted-foreground">{completedGoals.length} completed, {pausedGoals.length} paused</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-green-500/10 to-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Saved</CardTitle>
-            <PiggyBank className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(totalSavedAmount)}</div>
-            <p className="text-xs text-muted-foreground">of {formatCurrency(totalTargetAmount)} target</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-500/10 to-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall Progress</CardTitle>
-            <TrendingUp className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{overallProgress.toFixed(1)}%</div>
-            <Progress value={overallProgress} className="mt-2 h-2" />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-orange-500/10 to-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Daily Savings Rate</CardTitle>
-            <Wallet className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${financialInsights.dailySavings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrency(Math.abs(financialInsights.dailySavings))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {financialInsights.dailySavings >= 0 ? 'saving' : 'overspending'} per day (avg 30d)
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Active Goals */}
-      {activeGoals.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <PlayCircle className="h-5 w-5 text-blue-600" />
-            Active Goals ({activeGoals.length})
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {activeGoals.map(goal => {
-              const insights = getGoalInsights(goal);
-              return (
-                <Card key={goal.id} className="hover:shadow-lg transition-all duration-300 border-l-4 border-l-blue-500">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Target className="h-5 w-5 text-blue-600" />
-                          {goal.title}
-                        </CardTitle>
-                        {goal.description && (
-                          <p className="text-sm text-muted-foreground mt-1">{goal.description}</p>
-                        )}
-                      </div>
-                      <Badge className={getPriorityColor(goal.priority)}>
-                        {goal.priority.toUpperCase()}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Progress Bar */}
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-medium">{formatCurrency(goal.currentAmount)}</span>
-                        <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-3 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${getProgressColor(insights.progress)}`}
-                          style={{ width: `${insights.progress}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 text-right">
-                        {insights.progress.toFixed(1)}% complete • {formatCurrency(insights.remaining)} remaining
-                      </p>
-                    </div>
-
-                    {/* Smart Insights */}
-                    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-semibold flex items-center gap-1">
-                        <Zap className="h-3 w-3 text-yellow-500" />
-                        Smart Savings Analysis
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3 text-muted-foreground" />
-                          <span className={insights.isOverdue ? 'text-red-600 font-bold' : ''}>
-                            {insights.isOverdue ? 'OVERDUE' : `${insights.daysRemaining} days left`}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Wallet className="h-3 w-3 text-muted-foreground" />
-                          <span>{formatCurrency(insights.dailySavingsNeeded)}/day needed</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <PiggyBank className="h-3 w-3 text-muted-foreground" />
-                          <span>{formatCurrency(insights.monthlySavingsNeeded)}/month needed</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span>
-                            {insights.daysNeededAtCurrentRate === Infinity
-                              ? 'N/A (no savings)'
-                              : `~${insights.daysNeededAtCurrentRate} days at current rate`
-                            }
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Status indicator */}
-                      <div className={`flex items-center gap-1 text-xs font-medium mt-1 ${insights.isOnTrack ? 'text-green-600' : 'text-orange-600'}`}>
-                        {insights.isOnTrack ? (
-                          <>
-                            <CheckCircle2 className="h-3 w-3" />
-                            On track! Your savings rate is sufficient.
-                          </>
-                        ) : (
-                          <>
-                            <AlertTriangle className="h-3 w-3" />
-                            {insights.dailyCutNeeded > 0
-                              ? `Save ${formatCurrency(insights.dailyCutNeeded)} more/day or reduce expenses`
-                              : 'Increase your savings to meet this goal'
-                            }
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Add Funds */}
-                    {addFundsGoalId === goal.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="Amount"
-                          value={addFundsAmount}
-                          onChange={(e) => setAddFundsAmount(e.target.value)}
-                          className="flex-1"
-                        />
-                        <Button size="sm" onClick={() => handleAddFunds(goal.id)}>
-                          Add
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => { setAddFundsGoalId(null); setAddFundsAmount(''); }}>
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setAddFundsGoalId(goal.id)}
-                        >
-                          <ArrowUpRight className="h-3 w-3 mr-1" />
-                          Add Funds
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleToggleStatus(goal)}>
-                          <PauseCircle className="h-3 w-3" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => handleEdit(goal)}>
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleDelete(goal.id)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Paused Goals */}
-      {pausedGoals.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <PauseCircle className="h-5 w-5 text-yellow-600" />
-            Paused Goals ({pausedGoals.length})
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {pausedGoals.map(goal => {
-              const insights = getGoalInsights(goal);
-              return (
-                <Card key={goal.id} className="opacity-75 hover:opacity-100 transition-all duration-300 border-l-4 border-l-yellow-500">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <PauseCircle className="h-5 w-5 text-yellow-600" />
-                        {goal.title}
-                      </CardTitle>
-                      <Badge variant="secondary">PAUSED</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>{formatCurrency(goal.currentAmount)}</span>
-                        <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
-                      </div>
-                      <Progress value={insights.progress} className="h-2" />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => handleToggleStatus(goal)}>
-                        <PlayCircle className="h-3 w-3 mr-1" />
-                        Resume
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(goal)}>
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(goal.id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Completed Goals */}
-      {completedGoals.length > 0 && (
-        <div>
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            Completed Goals ({completedGoals.length})
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {completedGoals.map(goal => (
-              <Card key={goal.id} className="border-l-4 border-l-green-500 bg-green-50/30 dark:bg-green-900/10">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      {goal.title}
-                    </CardTitle>
-                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                      COMPLETED ✓
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingGoal ? 'Edit Goal' : 'Create New Savings Goal'}
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium text-green-600">{formatCurrency(goal.currentAmount)}</span>
-                      <span className="text-muted-foreground">{formatCurrency(goal.targetAmount)}</span>
-                    </div>
-                    <Progress value={100} className="h-2" />
+                    <Label htmlFor="goalTitle">Goal Title *</Label>
+                    <Input
+                      id="goalTitle"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      placeholder="e.g., New Laptop, Emergency Fund"
+                      required
+                    />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Completed on {new Date(goal.updatedAt).toLocaleDateString()}
-                  </p>
-                  <Button size="sm" variant="destructive" onClick={() => handleDelete(goal.id)}>
-                    <Trash2 className="h-3 w-3 mr-1" />
-                    Remove
-                  </Button>
-                </CardContent>
-              </Card>
+
+                  <div>
+                    <Label htmlFor="goalDescription">Description</Label>
+                    <Textarea
+                      id="goalDescription"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="Optional description for your goal"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="goalTarget">Target Amount *</Label>
+                      <Input
+                        id="goalTarget"
+                        type="number"
+                        step="0.01"
+                        value={formData.targetAmount}
+                        onChange={(e) => setFormData({ ...formData, targetAmount: e.target.value })}
+                        placeholder="0.00"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="goalCurrent">Already Saved</Label>
+                      <Input
+                        id="goalCurrent"
+                        type="number"
+                        step="0.01"
+                        value={formData.currentAmount}
+                        onChange={(e) => setFormData({ ...formData, currentAmount: e.target.value })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="goalDeadline">Deadline *</Label>
+                      <Input
+                        id="goalDeadline"
+                        type="date"
+                        value={formData.deadline}
+                        onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="goalPriority">Priority</Label>
+                      <Select value={formData.priority} onValueChange={(value: 'low' | 'medium' | 'high') => setFormData({ ...formData, priority: value })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">🟢 Low</SelectItem>
+                          <SelectItem value="medium">🟡 Medium</SelectItem>
+                          <SelectItem value="high">🔴 High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Smart Preview */}
+                  {formData.targetAmount && formData.deadline && (
+                    <Card className="bg-muted/50">
+                      <CardContent className="pt-4 space-y-2">
+                        <p className="text-sm font-medium flex items-center gap-1">
+                          <Zap className="h-4 w-4 text-yellow-500" />
+                          Smart Savings Preview
+                        </p>
+                        {(() => {
+                          const target = parseFloat(formData.targetAmount) || 0;
+                          const current = parseFloat(formData.currentAmount || '0');
+                          const remaining = target - current;
+                          const deadlineDate = new Date(formData.deadline);
+                          const now = new Date();
+                          const daysLeft = Math.max(0, Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                          const dailyNeeded = daysLeft > 0 ? remaining / daysLeft : remaining;
+                          const monthlyNeeded = dailyNeeded * 30;
+
+                          return (
+                            <div className="text-xs space-y-1 text-muted-foreground">
+                              <p>📅 {daysLeft} days until deadline</p>
+                              <p>💰 Need to save: {formatCurrency(dailyNeeded)}/day or {formatCurrency(monthlyNeeded)}/month</p>
+                              {financialInsights.dailySavings > 0 && (
+                                <p className={financialInsights.dailySavings >= dailyNeeded ? 'text-green-600' : 'text-red-600'}>
+                                  {financialInsights.dailySavings >= dailyNeeded
+                                    ? `✅ On track! Your current savings rate (${formatCurrency(financialInsights.dailySavings)}/day) is sufficient`
+                                    : `⚠️ Need to save ${formatCurrency(dailyNeeded - financialInsights.dailySavings)} more per day`
+                                  }
+                                </p>
+                              )}
+                              {financialInsights.dailySavings > 0 && (
+                                <p>🕐 At current rate: ~{Math.ceil(remaining / financialInsights.dailySavings)} days needed</p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <div className="flex justify-end space-x-2">
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit">
+                      {editingGoal ? 'Update Goal' : 'Create Goal'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+        }
+      />
+
+      <PageBody>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <Scorecard label="Active goals" value={String(activeGoals.length)} delta={<p className="text-xs text-muted-foreground">{completedGoals.length} completed, {pausedGoals.length} paused</p>} />
+          <Scorecard label="Saved" value={formatCurrency(totalSavedAmount)} delta={<p className="text-xs text-muted-foreground">of {formatCurrency(totalTargetAmount)}</p>} />
+          <Scorecard label="Overall progress" value={`${overallProgress.toFixed(1)}%`} delta={<Progress value={overallProgress} className="mt-1 h-1.5" />} />
+          <Scorecard
+            label="Daily savings, last 30 days"
+            value={`${financialInsights.dailySavings < 0 ? '-' : ''}${formatCurrency(Math.abs(financialInsights.dailySavings))}`}
+            delta={<p className="text-xs text-muted-foreground">{financialInsights.dailySavings >= 0 ? 'Saved per day' : 'Overspent per day'}</p>}
+          />
+        </div>
+
+        {goals.length === 0 ? (
+          <Sheet>
+            <div className="px-6 py-16 text-center">
+              <p className="font-medium">No savings goals</p>
+              <p className="mt-1 text-sm text-muted-foreground">Set a target and a deadline to see the daily amount you need to save.</p>
+              <Button className="mt-4" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
+                <Plus className="h-4 w-4" aria-hidden />
+                New goal
+              </Button>
+            </div>
+          </Sheet>
+        ) : (
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+            {([
+              ['Active', activeGoals],
+              ['Paused', pausedGoals],
+              ['Completed', completedGoals],
+            ] as const).map(([stage, list]) => (
+              <div key={stage} className="rounded-lg bg-muted/60 p-2 dark:bg-muted/30">
+                <div className="flex items-baseline justify-between px-2 pb-2 pt-1">
+                  <h2 className="text-sm font-semibold">
+                    {stage} <span className="font-normal text-muted-foreground">({list.length})</span>
+                  </h2>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {formatCurrency(list.reduce((s, g) => s + g.currentAmount, 0))}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {list.length === 0 && <p className="px-2 pb-2 text-xs text-muted-foreground">No {stage.toLowerCase()} goals.</p>}
+                  {list.map(goal => {
+                    const insights = getGoalInsights(goal);
+                    const stars = goal.priority === 'high' ? 3 : goal.priority === 'medium' ? 2 : 1;
+                    return (
+                      <article key={goal.id} className="rounded-md border bg-card p-3 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="truncate text-sm font-semibold">{goal.title}</h3>
+                            {goal.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{goal.description}</p>}
+                          </div>
+                          <span className="flex shrink-0" aria-label={`${goal.priority} priority`} title={`${goal.priority} priority`}>
+                            {[1, 2, 3].map(n => (
+                              <Star key={n} className={`h-3.5 w-3.5 ${n <= stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/40'}`} aria-hidden />
+                            ))}
+                          </span>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span className="text-sm font-semibold tabular-nums">{formatCurrency(goal.currentAmount)}</span>
+                            <span className="tabular-nums text-muted-foreground">of {formatCurrency(goal.targetAmount)}</span>
+                          </div>
+                          <Progress value={stage === 'Completed' ? 100 : insights.progress} className="mt-1.5 h-1.5" />
+                        </div>
+
+                        {stage === 'Active' && (
+                          <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                            <dt className="text-muted-foreground">Needed a day</dt>
+                            <dd className="text-right tabular-nums">{formatCurrency(insights.dailySavingsNeeded)}</dd>
+                            <dt className="text-muted-foreground">Needed a month</dt>
+                            <dd className="text-right tabular-nums">{formatCurrency(insights.monthlySavingsNeeded)}</dd>
+                            <dt className="text-muted-foreground">At current pace</dt>
+                            <dd className="text-right tabular-nums">
+                              {insights.daysNeededAtCurrentRate === Infinity ? 'Not saving' : `${insights.daysNeededAtCurrentRate} days`}
+                            </dd>
+                          </dl>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          {stage === 'Completed' ? (
+                            <Tag tone="green">Completed {formatDateDhaka(goal.updatedAt)}</Tag>
+                          ) : (
+                            <>
+                              <span className={`flex items-center gap-1 ${insights.isOverdue ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                <Clock className="h-3.5 w-3.5" aria-hidden />
+                                {insights.isOverdue ? 'Overdue' : `${insights.daysRemaining} days left`}
+                              </span>
+                              {stage === 'Active' && (
+                                <Tag tone={insights.isOnTrack ? 'green' : 'amber'}>
+                                  {insights.isOnTrack
+                                    ? 'On track'
+                                    : insights.dailyCutNeeded > 0 ? `Save ${formatCurrency(insights.dailyCutNeeded)} more a day` : 'Behind'}
+                                </Tag>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        {addFundsGoalId === goal.id ? (
+                          <div className="mt-3 flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              aria-label={`Amount to add to ${goal.title}`}
+                              placeholder="Amount"
+                              value={addFundsAmount}
+                              onChange={(e) => setAddFundsAmount(e.target.value)}
+                              className="h-8 flex-1"
+                              autoFocus
+                            />
+                            <Button size="sm" onClick={() => handleAddFunds(goal.id)}>Add</Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setAddFundsGoalId(null); setAddFundsAmount(''); }}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <div className="mt-3 flex items-center gap-1 border-t pt-2">
+                            {stage === 'Active' && <Button size="sm" onClick={() => setAddFundsGoalId(goal.id)}>Add funds</Button>}
+                            {stage === 'Paused' && <Button size="sm" variant="secondary" onClick={() => handleToggleStatus(goal)}>Resume</Button>}
+                            <div className="ml-auto flex gap-0.5">
+                              {stage === 'Active' && (
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleToggleStatus(goal)} aria-label={`Pause ${goal.title}`}>
+                                  <PauseCircle className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {stage !== 'Completed' && (
+                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleEdit(goal)} aria-label={`Edit ${goal.title}`}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:text-red-700 dark:text-red-400" onClick={() => handleDelete(goal.id)} aria-label={`Delete ${goal.title}`}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {goals.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="text-center py-12">
-            <Target className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-lg font-medium text-muted-foreground">No savings goals yet</p>
-            <p className="text-sm text-muted-foreground mb-4">
-              Create your first savings goal to start tracking your progress
-            </p>
-            <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Your First Goal
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        )}
+      </PageBody>
+    </>
   );
 }

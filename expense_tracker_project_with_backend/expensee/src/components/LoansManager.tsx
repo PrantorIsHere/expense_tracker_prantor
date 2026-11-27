@@ -1,38 +1,33 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Fragment, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import DatePicker from '@/components/DatePicker';
+import { AccountAvatar, Avatar, ControlPanel, GroupHeaderRows, PageBody, Sheet, StatusBar, Tag } from '@/components/erp';
 import { apiClient } from '@/lib/api';
 import { getUsers, getAccounts, getCategories, formatCurrency } from '@/lib/storage';
-import { getDhakaDateInputValue } from '@/lib/dhakaTime';
+import { createDhakaTimestamp, formatDateDhaka } from '@/lib/dhakaTime';
+import { dayKeyOf, todayKey } from '@/lib/dateRange';
+import { loanRemaining, isLoanOpen } from '@/lib/finance';
 import { User, Account, Category } from '@/components/types';
-import { 
-  Plus, 
-  CheckCircle, 
-  Clock, 
-  TrendingUp, 
-  TrendingDown, 
-  Search, 
-  Filter, 
-  ChevronLeft, 
-  ChevronRight,
-  Wallet,
-  ArrowDownRight,
-  ArrowUpRight,
-  DollarSign,
-  Trash2,
-  HeartHandshake
-} from 'lucide-react';
-import { loanSummary, loanRemaining, isLoanOpen } from '@/lib/finance';
+import { ChevronRight, Clock, LayoutGrid, List as ListIcon, MoreHorizontal, Plus, Search } from 'lucide-react';
 
 interface LoansManagerProps {
   onDataChange: () => void;
 }
+
+const STATUS_LABEL: Record<string, string> = { pending: 'Open', partial: 'Partly repaid', paid: 'Repaid', repaid: 'Repaid', forgiven: 'Forgiven' };
+const STATUS_TONE: Record<string, 'blue' | 'amber' | 'green' | 'violet'> = { pending: 'blue', partial: 'amber', paid: 'green', repaid: 'green', forgiven: 'violet' };
 
 // Loan as returned from the server (snake_case)
 interface ServerLoan {
@@ -60,13 +55,14 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   const [loans, setLoans] = useState<ServerLoan[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [view, setView] = useState<'kanban' | 'list'>('list');
+  // Groups expanded in the list view; settled loans start collapsed
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['given', 'taken']));
   const [categories, setCategories] = useState<Category[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   // Add Loan Form State
   const [formData, setFormData] = useState({
@@ -76,8 +72,8 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     accountId: '',
     recordTransaction: true,
     dueDate: '',
-    title: '',
-    description: ''
+    loanDate: todayKey(),
+    purpose: ''
   });
 
   // Repay Loan Modal State
@@ -105,10 +101,6 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     loadData();
   }, []);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, filterType, filterStatus]);
-
   const loadData = async () => {
     try {
       const [rawLoans, usrs, accs, cats] = await Promise.all([
@@ -134,16 +126,16 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       accountId: '',
       recordTransaction: true,
       dueDate: '',
-      title: '',
-      description: ''
+      loanDate: todayKey(),
+      purpose: ''
     });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.userId || !formData.amount || !formData.title) {
-      alert('Please fill in all required fields');
+    if (!formData.userId || !formData.amount) {
+      alert('Select a person and enter an amount.');
       return;
     }
 
@@ -159,9 +151,9 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
         person:             selectedUser.name,
         amount:             parseFloat(formData.amount),
         type:               formData.type,
-        description:        formData.description || formData.title,
-        date:               new Date().toISOString(),
-        due_date:           formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
+        description:        formData.purpose.trim() || null,
+        date:               createDhakaTimestamp(formData.loanDate || todayKey()),
+        due_date:           formData.dueDate ? `${formData.dueDate}T00:00:00+06:00` : null,
         status:             'pending',
         account_id:         formData.accountId || null,
         record_transaction: formData.recordTransaction && !!formData.accountId,
@@ -186,7 +178,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     setRepayFormData({
       accountId: defaultAccountId,
       amount: remainingAmount > 0 ? remainingAmount.toString() : loan.amount.toString(),
-      date: getDhakaDateInputValue(),
+      date: todayKey(),
       notes: loan.type === 'given' 
         ? `Loan repayment received from ${personName}` 
         : `Loan repayment paid to ${personName}`,
@@ -199,13 +191,13 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     if (!repayingLoan) return;
 
     if (!repayFormData.accountId) {
-      alert('Please select an account for the repayment payment/deposit');
+      alert('Select the account the repayment goes through.');
       return;
     }
 
     const repayAmt = parseFloat(repayFormData.amount);
     if (isNaN(repayAmt) || repayAmt <= 0) {
-      alert('Please enter a valid repayment amount greater than 0');
+      alert('Enter a repayment amount greater than 0.');
       return;
     }
 
@@ -214,7 +206,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
       await apiClient.repayLoan(repayingLoan.id, {
         account_id: repayFormData.accountId,
         amount: repayAmt,
-        date: repayFormData.date ? new Date(repayFormData.date).toISOString() : new Date().toISOString(),
+        date: createDhakaTimestamp(repayFormData.date || todayKey()),
         notes: repayFormData.notes,
       });
 
@@ -237,7 +229,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     setForgivingLoan(loan);
     setForgiveFormData({
       categoryId: forgivenCat ? forgivenCat.id : (categories[0]?.id || ''),
-      date: getDhakaDateInputValue(),
+      date: todayKey(),
       notes: `Forgiven loan to ${personName} (walked over)`,
     });
     setIsForgiveDialogOpen(true);
@@ -251,7 +243,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     try {
       await apiClient.forgiveLoan(forgivingLoan.id, {
         category_id: forgiveFormData.categoryId || undefined,
-        date: forgiveFormData.date ? new Date(forgiveFormData.date).toISOString() : new Date().toISOString(),
+        date: createDhakaTimestamp(forgiveFormData.date || todayKey()),
         notes: forgiveFormData.notes,
       });
 
@@ -267,7 +259,7 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
   };
 
   const handleDeleteLoan = async (loanId: string) => {
-    if (confirm('Are you sure you want to delete this loan record?')) {
+    if (confirm('Delete this loan? Its linked transactions (the loan itself, repayments and any write-off) are deleted too, so account balances change to match.')) {
       try {
         await apiClient.deleteLoan(loanId);
         await loadData();
@@ -276,15 +268,6 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
         alert(`Failed to delete loan: ${(err as Error).message}`);
       }
     }
-  };
-
-  const getLoansSummary = () => {
-    const stats = loanSummary(loans as unknown as Parameters<typeof loanSummary>[0]);
-    return {
-      totalGiven: stats.outstandingGiven,
-      totalTaken: stats.outstandingTaken,
-      netPosition: stats.netPosition,
-    };
   };
 
   const filteredLoans = loans.filter((loan) => {
@@ -317,818 +300,529 @@ export default function LoansManager({ onDataChange }: LoansManagerProps) {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  const totalPages = Math.ceil(filteredLoans.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentLoans = filteredLoans.slice(startIndex, endIndex);
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const today = todayKey();
+  const personOf = (loan: ServerLoan) => loan.person || users.find(u => u.id === loan.userId || u.id === loan.user_id)?.name || 'Contact';
+  const remainingOf = (loan: ServerLoan) => loanRemaining(loan as unknown as Parameters<typeof loanRemaining>[0]);
+  const isOverdue = (loan: ServerLoan) => !!loan.due_date && isLoanOpen(loan) && dayKeyOf(loan.due_date) < today;
+  const isSettled = (loan: ServerLoan) => !isLoanOpen(loan);
 
-  const getPageNumbers = () => {
-    const pageNumbers: number[] = [];
-    const maxVisiblePages = 5;
+  const sideStats = (type: 'given' | 'taken') => {
+    const list = loans.filter(l => l.type === type);
+    const open = list.filter(l => isLoanOpen(l));
+    const overdue = open.filter(isOverdue);
+    return {
+      total: list.reduce((s, l) => s + l.amount, 0),
+      repaid: list.reduce((s, l) => s + Number(l.repaid_amount || 0), 0),
+      remaining: open.reduce((s, l) => s + remainingOf(l), 0),
+      openCount: open.length,
+      overdueCount: overdue.length,
+      overdueAmount: overdue.reduce((s, l) => s + remainingOf(l), 0),
+    };
+  };
+  const lent = sideStats('given');
+  const borrowed = sideStats('taken');
+  const net = lent.remaining - borrowed.remaining;
 
-    if (totalPages <= maxVisiblePages) {
-      for (let i = 1; i <= totalPages; i += 1) {
-        pageNumbers.push(i);
-      }
-      return pageNumbers;
-    }
+  const groups = [
+    { key: 'given', label: 'Owed to you', rows: filteredLoans.filter(l => l.type === 'given' && isLoanOpen(l)) },
+    { key: 'taken', label: 'You owe', rows: filteredLoans.filter(l => l.type === 'taken' && isLoanOpen(l)) },
+    { key: 'settled', label: 'Settled', rows: filteredLoans.filter(isSettled) },
+  ].filter(g => g.rows.length > 0);
 
-    let startPage = Math.max(1, currentPage - 2);
-    const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+  const stages = [
+    { key: 'pending', label: 'Open', rows: filteredLoans.filter(l => l.status === 'pending' && isLoanOpen(l)) },
+    { key: 'partial', label: 'Partly repaid', rows: filteredLoans.filter(l => l.status === 'partial' && isLoanOpen(l)) },
+    { key: 'settled', label: 'Settled', rows: filteredLoans.filter(isSettled) },
+  ];
 
-    if (endPage - startPage < maxVisiblePages - 1) {
-      startPage = Math.max(1, endPage - maxVisiblePages + 1);
-    }
+  const toggleGroup = (key: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
-    for (let i = startPage; i <= endPage; i += 1) {
-      pageNumbers.push(i);
-    }
+  const loanActions = (loan: ServerLoan, compact = false) => (
+    <div className="flex items-center justify-end gap-1">
+      {isLoanOpen(loan) && (
+        <Button size="sm" variant={compact ? 'ghost' : 'secondary'} className={compact ? 'h-7 px-2 text-primary hover:text-primary' : 'hidden sm:inline-flex'} onClick={() => openRepayDialog(loan)}>
+          Repay
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`More actions for ${personOf(loan)}`}>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {isLoanOpen(loan) && <DropdownMenuItem onSelect={() => openRepayDialog(loan)}>Record repayment</DropdownMenuItem>}
+          {isLoanOpen(loan) && loan.type === 'given' && <DropdownMenuItem onSelect={() => openForgiveDialog(loan)}>Forgive remaining amount</DropdownMenuItem>}
+          {isLoanOpen(loan) && <DropdownMenuSeparator />}
+          <DropdownMenuItem className="text-red-600 focus:text-red-600 dark:text-red-400" onSelect={() => handleDeleteLoan(loan.id)}>Delete loan</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
 
-    return pageNumbers;
+  const statusTag = (loan: ServerLoan) => (
+    <span className="flex flex-wrap items-center gap-1">
+      <Tag tone={STATUS_TONE[loan.status] ?? 'gray'}>{STATUS_LABEL[loan.status] ?? loan.status}</Tag>
+      {isOverdue(loan) && <Tag tone="red">Overdue</Tag>}
+    </span>
+  );
+
+  const repaidBar = (loan: ServerLoan) => {
+    const repaid = Number(loan.repaid_amount || 0);
+    const pct = loan.amount > 0 ? Math.min(100, (repaid / loan.amount) * 100) : 0;
+    return (
+      <div className="flex min-w-28 items-center gap-2">
+        <div className="h-1.5 flex-1 rounded-full bg-muted">
+          <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="w-9 text-right text-xs tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
+      </div>
+    );
   };
 
-  const summary = getLoansSummary();
+  const remainingForm = repayingLoan ? remainingOf(repayingLoan) : 0;
+  const repayAccount = accounts.find(a => a.id === repayFormData.accountId);
+  const forgiveAmount = forgivingLoan ? remainingOf(forgivingLoan) : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Loans Management</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Loan
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="w-[calc(100%_-_2rem)] max-w-md max-h-[calc(100dvh_-_2rem)] overflow-y-auto rounded-lg p-4 sm:p-6">
-            <DialogHeader>
-              <DialogTitle>Add New Loan</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="loanTitle">Title / Purpose *</Label>
-                <Input
-                  id="loanTitle"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Loan title/purpose"
-                  required
-                />
-              </div>
+    <>
+      <ControlPanel
+        title="Loans"
+        actions={
+          <Button size="sm" onClick={() => { resetForm(); setIsDialogOpen(true); }}>
+            <Plus className="h-4 w-4" aria-hidden />
+            New
+          </Button>
+        }
+      >
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" aria-hidden />
+          <Input
+            id="loan-search"
+            aria-label="Search loans"
+            placeholder="Search person or purpose"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 pl-8 text-[13px]"
+          />
+        </div>
+        <Select value={filterType} onValueChange={setFilterType}>
+          <SelectTrigger aria-label="Type" className="h-8 w-44 text-[13px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Lent and borrowed</SelectItem>
+            <SelectItem value="given">Lent</SelectItem>
+            <SelectItem value="taken">Borrowed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger aria-label="Status" className="h-8 w-40 text-[13px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="pending">Open</SelectItem>
+            <SelectItem value="partial">Partly repaid</SelectItem>
+            <SelectItem value="paid">Repaid</SelectItem>
+            <SelectItem value="forgiven">Forgiven</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex rounded-md border bg-card p-0.5" role="group" aria-label="View">
+          <button type="button" aria-pressed={view === 'list'} aria-label="List view" onClick={() => setView('list')}
+            className={`inline-flex h-7 w-8 items-center justify-center rounded ${view === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <ListIcon className="h-4 w-4" />
+          </button>
+          <button type="button" aria-pressed={view === 'kanban'} aria-label="Kanban view" onClick={() => setView('kanban')}
+            className={`inline-flex h-7 w-8 items-center justify-center rounded ${view === 'kanban' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+        </div>
+      </ControlPanel>
 
-              <div>
-                <Label htmlFor="loanDescription">Description</Label>
-                <Input
-                  id="loanDescription"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Optional description"
-                />
+      <PageBody>
+        {/* Receivables, payables, net */}
+        <section className="grid grid-cols-1 overflow-hidden rounded-lg border bg-card md:grid-cols-[1fr_1fr_minmax(0,0.8fr)] md:divide-x" aria-label="Loan summary">
+          {([
+            ['Owed to you', lent, 'lent'],
+            ['You owe', borrowed, 'borrowed'],
+          ] as const).map(([label, stats, verb]) => (
+            <div key={label} className="space-y-3 border-b p-4 md:border-b-0">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums">{formatCurrency(stats.remaining)}</p>
+                </div>
+                <div className="text-right text-xs text-muted-foreground">
+                  <p>{stats.openCount} open {stats.openCount === 1 ? 'loan' : 'loans'}</p>
+                  {stats.overdueCount > 0 && (
+                    <p className="mt-1"><Tag tone="red">{stats.overdueCount} overdue, {formatCurrency(stats.overdueAmount)}</Tag></p>
+                  )}
+                </div>
               </div>
+              <div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-2 rounded-full bg-primary" style={{ width: `${stats.total > 0 ? (stats.repaid / stats.total) * 100 : 0}%` }} />
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Repaid <span className="font-medium tabular-nums text-foreground">{formatCurrency(stats.repaid)}</span> of {formatCurrency(stats.total)} {verb}
+                </p>
+              </div>
+            </div>
+          ))}
+          <div className="p-4">
+            <p className="text-sm text-muted-foreground">Net position</p>
+            <p className={`mt-1 text-2xl font-semibold tabular-nums ${net < 0 ? 'text-red-600 dark:text-red-400' : net > 0 ? 'text-green-700 dark:text-green-400' : ''}`}>
+              {net < 0 ? '-' : net > 0 ? '+' : ''}{formatCurrency(Math.abs(net))}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {net < 0 ? 'You owe more than you are owed.' : net > 0 ? 'You are owed more than you owe.' : 'Even.'}
+            </p>
+          </div>
+        </section>
+
+        {filteredLoans.length === 0 ? (
+          <Sheet>
+            <div className="px-6 py-16 text-center">
+              <p className="font-medium">No loans</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {users.length === 0
+                  ? 'Add a user in the Users tab, then record a loan.'
+                  : loans.length > 0
+                    ? 'Nothing matches these filters. Clear the search or a filter to see more.'
+                    : 'Record money you lent or borrowed to track repayments.'}
+              </p>
+            </div>
+          </Sheet>
+        ) : view === 'list' ? (
+          <Sheet bodyClassName="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-4">Person</TableHead>
+                  <TableHead className="hidden md:table-cell">Date</TableHead>
+                  <TableHead className="hidden md:table-cell">Due</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Amount</TableHead>
+                  <TableHead className="hidden lg:table-cell">Repaid</TableHead>
+                  <TableHead className="text-right">Remaining</TableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <TableHead className="pr-3 text-right sm:w-32"><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {groups.map(group => {
+                  const open = expanded.has(group.key);
+                  const subtotal = group.rows.reduce((s, l) => s + remainingOf(l), 0);
+                  return (
+                    <Fragment key={group.key}>
+                      <GroupHeaderRows
+                        spans={{ xs: [1, 1], sm: [2, 2], md: [4, 2], lg: [5, 2] }}
+                        rowClassName="bg-muted/40 hover:bg-muted/60"
+                        labelClassName="pl-2"
+                        subtotalClassName="font-semibold tabular-nums"
+                        subtotal={group.key === 'settled' ? '' : formatCurrency(subtotal)}
+                        label={
+                          <button type="button" aria-expanded={open} onClick={() => toggleGroup(group.key)}
+                            className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold">
+                            <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden />
+                            {group.label}
+                            <span className="font-normal text-muted-foreground">({group.rows.length})</span>
+                          </button>
+                        }
+                      />
+                      {open && group.rows.map(loan => {
+                        const person = personOf(loan);
+                        return (
+                          <TableRow key={loan.id} className={isSettled(loan) ? 'text-muted-foreground' : undefined}>
+                            <TableCell className="pl-4">
+                              <div className="flex items-center gap-2.5">
+                                <Avatar name={person} size="sm" />
+                                <div className="min-w-0">
+                                  <p className="truncate font-medium text-foreground">{person}</p>
+                                  {loan.description && <p className="truncate text-xs text-muted-foreground">{loan.description}</p>}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden whitespace-nowrap tabular-nums text-muted-foreground md:table-cell">{formatDateDhaka(loan.date || loan.created_at)}</TableCell>
+                            <TableCell className={`hidden whitespace-nowrap tabular-nums md:table-cell ${isOverdue(loan) ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                              {loan.due_date ? formatDateDhaka(loan.due_date) : '—'}
+                            </TableCell>
+                            <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatCurrency(loan.amount)}</TableCell>
+                            <TableCell className="hidden lg:table-cell">{repaidBar(loan)}</TableCell>
+                            <TableCell className="text-right font-semibold tabular-nums">{isSettled(loan) ? '—' : formatCurrency(remainingOf(loan))}</TableCell>
+                            <TableCell className="hidden sm:table-cell">{statusTag(loan)}</TableCell>
+                            <TableCell className="pr-3">{loanActions(loan)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Sheet>
+        ) : (
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+            {stages.map(stage => (
+              <div key={stage.key} className="rounded-lg bg-muted/60 p-2 dark:bg-muted/30">
+                <div className="flex items-baseline justify-between px-2 pb-2 pt-1">
+                  <h2 className="text-sm font-semibold">
+                    {stage.label} <span className="font-normal text-muted-foreground">({stage.rows.length})</span>
+                  </h2>
+                  {stage.key !== 'settled' && (
+                    <span className="text-xs tabular-nums text-muted-foreground">{formatCurrency(stage.rows.reduce((s, l) => s + remainingOf(l), 0))}</span>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {stage.rows.length === 0 && <p className="px-2 pb-2 text-xs text-muted-foreground">Nothing here.</p>}
+                  {stage.rows.map(loan => {
+                    const person = personOf(loan);
+                    const settled = isSettled(loan);
+                    return (
+                      <article key={loan.id} className="rounded-md border bg-card p-3 shadow-sm">
+                        <div className="flex items-start gap-2.5">
+                          <Avatar name={person} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="truncate text-sm font-semibold">{person}</h3>
+                              <Tag tone={loan.type === 'given' ? 'amber' : 'blue'}>{loan.type === 'given' ? 'Lent' : 'Borrowed'}</Tag>
+                            </div>
+                            <p className="truncate text-xs text-muted-foreground">{loan.description || 'No purpose noted'}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-baseline justify-between gap-2">
+                          <span className="text-lg font-semibold tabular-nums">{formatCurrency(settled ? loan.amount : remainingOf(loan))}</span>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {settled ? (loan.status === 'forgiven' ? 'Forgiven' : 'Repaid in full') : `left of ${formatCurrency(loan.amount)}`}
+                          </span>
+                        </div>
+                        {!settled && <div className="mt-2">{repaidBar(loan)}</div>}
+
+                        <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2">
+                          <span className={`flex items-center gap-1 text-xs ${isOverdue(loan) ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                            <Clock className="h-3.5 w-3.5" aria-hidden />
+                            {settled
+                              ? `Closed ${formatDateDhaka(loan.forgiven_date || loan.repaid_date || loan.updated_at)}`
+                              : loan.due_date ? `Due ${formatDateDhaka(loan.due_date)}${isOverdue(loan) ? ', overdue' : ''}` : 'No due date'}
+                          </span>
+                          {loanActions(loan, true)}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </PageBody>
+
+      {/* New loan */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-h-[calc(100dvh_-_2rem)] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New loan</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1" role="radiogroup" aria-label="Loan type">
+              {([['given', 'I lent money'], ['taken', 'I borrowed money']] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={formData.type === value}
+                  onClick={() => setFormData({ ...formData, type: value })}
+                  className={`rounded px-3 py-1.5 text-sm transition-colors ${formData.type === value ? 'bg-card font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="loanPerson">{formData.type === 'given' ? 'Lent to' : 'Borrowed from'}</Label>
+                <Select value={formData.userId} onValueChange={(value) => setFormData({ ...formData, userId: value })}>
+                  <SelectTrigger id="loanPerson"><SelectValue placeholder="Select a person" /></SelectTrigger>
+                  <SelectContent>
+                    {users.length > 0
+                      ? users.map(user => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)
+                      : <div className="p-2 text-sm text-muted-foreground">Add people in the Users tab first.</div>}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="loanAmount">Amount</Label>
+                <Input id="loanAmount" type="number" inputMode="decimal" step="0.01" min="0" value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })} required />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="loanPurpose">Purpose</Label>
+              <Input id="loanPurpose" value={formData.purpose} onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                placeholder="For example, medical bills" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="loanDate">Date</Label>
+                <DatePicker id="loanDate" value={formData.loanDate} onChange={(v) => setFormData({ ...formData, loanDate: v || todayKey() })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="loanDue">Due date</Label>
+                <DatePicker id="loanDue" value={formData.dueDate} onChange={(v) => setFormData({ ...formData, dueDate: v })} placeholder="No due date" clearable />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="loanAccount">{formData.type === 'given' ? 'Paid from' : 'Received into'}</Label>
+              <Select value={formData.accountId || 'none'} onValueChange={(val) => setFormData({ ...formData, accountId: val === 'none' ? '' : val })}>
+                <SelectTrigger id="loanAccount"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account (track only)</SelectItem>
+                  {accounts.map(acc => (
+                    <SelectItem key={acc.id} value={acc.id}><span className="flex items-center gap-2"><AccountAvatar name={acc.name} bankName={acc.bankName} color={acc.color} size="xs" />{acc.name} ({formatCurrency(acc.balance ?? acc.currentBalance ?? 0)})</span></SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.accountId && formData.amount && (
+                <p className="text-xs text-muted-foreground">
+                  {formData.type === 'given' ? 'Takes' : 'Adds'} {formatCurrency(Number(formData.amount) || 0)} {formData.type === 'given' ? 'from' : 'to'} {accounts.find(a => a.id === formData.accountId)?.name}.
+                </p>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={users.length === 0}>Create loan</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record repayment */}
+      <Dialog open={isRepayDialogOpen} onOpenChange={setIsRepayDialogOpen}>
+        <DialogContent className="max-h-[calc(100dvh_-_2rem)] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Record repayment</DialogTitle>
+          </DialogHeader>
+          {repayingLoan && (
+            <form onSubmit={handleConfirmRepay} className="space-y-4">
+              <StatusBar steps={['Open', 'Partly repaid', 'Repaid']} current={repayingLoan.status === 'partial' ? 1 : 0} />
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border bg-muted/40 p-3 text-sm">
+                <dt className="text-muted-foreground">{repayingLoan.type === 'given' ? 'Borrower' : 'Lender'}</dt>
+                <dd className="text-right font-medium">{personOf(repayingLoan)}</dd>
+                <dt className="text-muted-foreground">Loan amount</dt>
+                <dd className="text-right tabular-nums">{formatCurrency(repayingLoan.amount)}</dd>
+                <dt className="text-muted-foreground">Repaid so far</dt>
+                <dd className="text-right tabular-nums">{formatCurrency(Number(repayingLoan.repaid_amount || 0))}</dd>
+                <dt className="font-medium">Remaining</dt>
+                <dd className="text-right font-semibold tabular-nums">{formatCurrency(remainingForm)}</dd>
+              </dl>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="min-w-0">
-                  <Label htmlFor="loanAmount">Amount (৳) *</Label>
-                  <Input
-                    id="loanAmount"
-                    type="number"
-                    step="0.01"
-                    value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    placeholder="0.00"
-                    required
-                  />
+                <div className="space-y-1.5">
+                  <div className="mb-1.5 flex h-3.5 items-center justify-between">
+                    <Label htmlFor="repayAmount">Amount</Label>
+                    {Number(repayFormData.amount) !== remainingForm && (
+                      <button type="button" className="text-xs text-primary hover:underline" onClick={() => setRepayFormData({ ...repayFormData, amount: String(remainingForm) })}>
+                        Full amount
+                      </button>
+                    )}
+                  </div>
+                  <Input id="repayAmount" type="number" inputMode="decimal" step="0.01" min="0.01" max={remainingForm || undefined} required
+                    value={repayFormData.amount} onChange={(e) => setRepayFormData({ ...repayFormData, amount: e.target.value })} />
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="repayDate">Date</Label>
+                  <DatePicker id="repayDate" value={repayFormData.date} onChange={(v) => setRepayFormData({ ...repayFormData, date: v || todayKey() })} />
+                </div>
+              </div>
 
-                <div className="min-w-0">
-                  <Label htmlFor="loanType">Type *</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(value: 'given' | 'taken') => setFormData({ ...formData, type: value })}
-                  >
-                    <SelectTrigger id="loanType" className="w-full min-w-0">
-                      <SelectValue placeholder="Select type">
-                        {formData.type === 'given' ? 'Loan Given' : 'Loan Taken'}
-                      </SelectValue>
-                    </SelectTrigger>
+              <div className="space-y-1.5">
+                <Label htmlFor="repayAccount">{repayingLoan.type === 'given' ? 'Received into' : 'Paid from'}</Label>
+                <Select value={repayFormData.accountId} onValueChange={(val) => setRepayFormData({ ...repayFormData, accountId: val })}>
+                  <SelectTrigger id="repayAccount"><SelectValue placeholder="Select an account" /></SelectTrigger>
+                  <SelectContent>
+                    {accounts.map(acc => (
+                      <SelectItem key={acc.id} value={acc.id}><span className="flex items-center gap-2"><AccountAvatar name={acc.name} bankName={acc.bankName} color={acc.color} size="xs" />{acc.name} ({formatCurrency(acc.balance ?? acc.currentBalance ?? 0)})</span></SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {repayAccount && Number(repayFormData.amount) > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {repayingLoan.type === 'given' ? 'Adds' : 'Takes'} {formatCurrency(Number(repayFormData.amount))} {repayingLoan.type === 'given' ? 'to' : 'from'} {repayAccount.name}.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="repayNotes">Note</Label>
+                <Input id="repayNotes" value={repayFormData.notes} onChange={(e) => setRepayFormData({ ...repayFormData, notes: e.target.value })} />
+              </div>
+
+              <DialogFooter className="gap-2 pt-2">
+                <Button type="button" variant="secondary" onClick={() => setIsRepayDialogOpen(false)} disabled={repaySubmitting}>Cancel</Button>
+                <Button type="submit" disabled={repaySubmitting || accounts.length === 0}>
+                  {repaySubmitting ? 'Saving…' : 'Record repayment'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Forgive */}
+      <Dialog open={isForgiveDialogOpen} onOpenChange={setIsForgiveDialogOpen}>
+        <DialogContent className="max-h-[calc(100dvh_-_2rem)] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Forgive loan</DialogTitle>
+          </DialogHeader>
+          {forgivingLoan && (
+            <form onSubmit={handleConfirmForgive} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                The remaining {formatCurrency(forgiveAmount)} that {personOf(forgivingLoan)} owes you is recorded as an expense, and the loan is closed. No money moves between accounts.
+              </p>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border bg-muted/40 p-3 text-sm">
+                <dt className="text-muted-foreground">Loan amount</dt>
+                <dd className="text-right tabular-nums">{formatCurrency(forgivingLoan.amount)}</dd>
+                <dt className="text-muted-foreground">Repaid so far</dt>
+                <dd className="text-right tabular-nums">{formatCurrency(Number(forgivingLoan.repaid_amount || 0))}</dd>
+                <dt className="font-medium">To forgive</dt>
+                <dd className="text-right font-semibold tabular-nums">{formatCurrency(forgiveAmount)}</dd>
+              </dl>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="forgiveCategory">Expense category</Label>
+                  <Select value={forgiveFormData.categoryId} onValueChange={(val) => setForgiveFormData({ ...forgiveFormData, categoryId: val })}>
+                    <SelectTrigger id="forgiveCategory"><SelectValue placeholder="Select a category" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="given">
-                        <div className="flex flex-col">
-                          <span>Loan Given</span>
-                          <span className="text-xs text-muted-foreground">Money you lent out</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="taken">
-                        <div className="flex flex-col">
-                          <span>Loan Taken</span>
-                          <span className="text-xs text-muted-foreground">Money you borrowed</span>
-                        </div>
-                      </SelectItem>
+                      {categories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-
-              <div>
-                <Label htmlFor="loanUser">Contact Person *</Label>
-                <Select value={formData.userId} onValueChange={(value) => setFormData({ ...formData, userId: value })}>
-                  <SelectTrigger id="loanUser">
-                    <SelectValue placeholder="Select user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.length > 0 ? (
-                      users.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <div className="p-2 text-sm text-muted-foreground">
-                        No users available. Please add users first.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
-                {users.length === 0 && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Go to Users tab to add financial users first.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="loanAccount">Payment Method / Account</Label>
-                <Select
-                  value={formData.accountId || 'none'}
-                  onValueChange={(val) => setFormData({ ...formData, accountId: val === 'none' ? '' : val })}
-                >
-                  <SelectTrigger id="loanAccount" className="min-w-0 [&>span]:truncate">
-                    <SelectValue placeholder="Select account (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (Track loan without moving cash)</SelectItem>
-                    {accounts.map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        {acc.name} ({acc.type.replace('_', ' ')}) — Bal: {formatCurrency(acc.balance ?? acc.currentBalance ?? 0)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {formData.accountId && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formData.type === 'given' 
-                      ? '💸 Disburses funds from this account (- Cash Out / Expense)' 
-                      : '💰 Deposits funds into this account (+ Cash In / Income)'}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="loanDueDate">Due Date (Optional)</Label>
-                <Input
-                  id="loanDueDate"
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={users.length === 0}>
-                  Create Loan
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Info Alert */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">How Loans Work</h3>
-            <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
-              <p><strong>Loan Given:</strong> Money you lent to someone else (pending repayment)</p>
-              <p><strong>Loan Taken:</strong> Money you borrowed from someone (you owe this)</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Outstanding Given</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(summary.totalGiven)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Amount you lent (pending repayment)
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Outstanding Taken</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(summary.totalTaken)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Amount you borrowed (pending repayment)
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Position</CardTitle>
-            <Badge variant={summary.netPosition >= 0 ? "default" : "destructive"}>
-              {summary.netPosition >= 0 ? 'You are owed' : 'You owe'}
-            </Badge>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${summary.netPosition >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatCurrency(Math.abs(summary.netPosition))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Net outstanding amount
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="mr-2 h-4 w-4" />
-            Loan Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="loan-search">Search</Label>
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="loan-search"
-                  placeholder="Person name or note"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="loan-type-filter">Type</Label>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger id="loan-type-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="given">Loan Given</SelectItem>
-                  <SelectItem value="taken">Loan Taken</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="loan-status-filter">Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger id="loan-status-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="pending">Pending (Unpaid & Partial)</SelectItem>
-                  <SelectItem value="partial">Partially Repaid Only</SelectItem>
-                  <SelectItem value="paid">Fully Repaid / Paid</SelectItem>
-                  <SelectItem value="forgiven">Forgiven / Walked Over</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Loans Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            All Loans ({filteredLoans.length})
-            {filteredLoans.length > 0 && (
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredLoans.length)} of {filteredLoans.length}
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {currentLoans.length > 0 ? (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Person</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Account</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentLoans.map((loan) => (
-                      <TableRow key={loan.id}>
-                        <TableCell>
-                          {new Date(loan.date || loan.created_at).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <p className="font-medium">
-                            {loan.person || users.find(u => u.id === loan.userId || u.id === loan.user_id)?.name || 'Contact'}
-                          </p>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-sm text-muted-foreground">{loan.description || '—'}</p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={loan.type === 'given' ? 'default' : 'destructive'}>
-                            {loan.type === 'given' ? 'GIVEN' : 'TAKEN'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className={`font-medium ${
-                          loan.type === 'given' ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          <div>{formatCurrency(loan.amount)}</div>
-                          {loan.status === 'partial' && (
-                            <div className="text-xs text-amber-600 dark:text-amber-400 font-normal">
-                              Due: {formatCurrency(loanRemaining(loan as unknown as Parameters<typeof loanRemaining>[0]))}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {(() => {
-                            const accId = loan.repaid_account_id || loan.account_id;
-                            const acc = accounts.find(a => a.id === accId);
-                            return acc ? (
-                              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                                <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span>{acc.name}</span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            );
-                          })()}
-                        </TableCell>
-                        <TableCell>
-                          {loan.due_date ? (
-                            <span className={
-                              new Date(loan.due_date) < new Date() && isLoanOpen(loan)
-                                ? 'text-red-600 font-medium'
-                                : ''
-                            }>
-                              {new Date(loan.due_date).toLocaleDateString()}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">No due date</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant={isLoanOpen(loan) ? 'outline' : 'default'}
-                            className={
-                              loan.status === 'forgiven'
-                                ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                                : loan.status === 'partial'
-                                ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
-                                : ''
-                            }
-                          >
-                            {loan.status === 'pending' ? (
-                              <>
-                                <Clock className="mr-1 h-3 w-3" />
-                                PENDING
-                              </>
-                            ) : loan.status === 'partial' ? (
-                              <>
-                                <Clock className="mr-1 h-3 w-3 text-blue-500" />
-                                PARTIAL ({formatCurrency(loan.repaid_amount || 0)} paid)
-                              </>
-                            ) : loan.status === 'forgiven' ? (
-                              <>
-                                <HeartHandshake className="mr-1 h-3 w-3 text-amber-600" />
-                                FORGIVEN
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="mr-1 h-3 w-3 text-green-500" />
-                                REPAID
-                              </>
-                            )}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {isLoanOpen(loan) && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs font-medium"
-                                  onClick={() => openRepayDialog(loan)}
-                                  title="Mark loan as repaid"
-                                >
-                                  <CheckCircle className="mr-1 h-3.5 w-3.5" />
-                                  Mark Repaid
-                                </Button>
-                                {loan.type === 'given' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 h-8 text-xs font-medium"
-                                    onClick={() => openForgiveDialog(loan)}
-                                    title="Forgive / walk over this loan (converts to permanent expense)"
-                                  >
-                                    <HeartHandshake className="mr-1 h-3.5 w-3.5 text-amber-600" />
-                                    Forgive
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 h-8 w-8 p-0"
-                              onClick={() => handleDeleteLoan(loan.id)}
-                              title="Delete Loan"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-6">
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Previous
-                    </Button>
-
-                    <div className="flex items-center space-x-1">
-                      {getPageNumbers().map((pageNum) => (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setCurrentPage(pageNum)}
-                          className="w-8 h-8 p-0"
-                        >
-                          {pageNum}
-                        </Button>
-                      ))}
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-
-                  <div className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p className="text-lg font-medium">No loans found</p>
-              <p className="text-sm">
-                {users.length === 0
-                  ? "Add users first, then create your first loan"
-                  : loans.length > 0
-                  ? "No loans match your current filters"
-                  : "Create your first loan to get started"
-                }
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Repay Loan Modal */}
-      <Dialog open={isRepayDialogOpen} onOpenChange={setIsRepayDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              Mark Loan as Repaid
-            </DialogTitle>
-          </DialogHeader>
-
-          {repayingLoan && (
-            <form onSubmit={handleConfirmRepay} className="space-y-4 pt-2">
-              {/* Cash flow banner */}
-              <div className={`rounded-lg p-3 border ${
-                repayingLoan.type === 'given'
-                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-100'
-                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100'
-              }`}>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  {repayingLoan.type === 'given' ? (
-                    <>
-                      <ArrowDownRight className="h-4 w-4 text-green-600" />
-                      <span>Cash In (+৳{repayFormData.amount || repayingLoan.amount})</span>
-                    </>
-                  ) : (
-                    <>
-                      <ArrowUpRight className="h-4 w-4 text-amber-600" />
-                      <span>Cash Out (-৳{repayFormData.amount || repayingLoan.amount})</span>
-                    </>
-                  )}
-                </div>
-                <p className="text-xs mt-1 opacity-90">
-                  {repayingLoan.type === 'given'
-                    ? `You are receiving money back from ${repayingLoan.person || 'Contact'}. This will deposit into your account and INCREASE your total balance.`
-                    : `You are paying back your debt to ${repayingLoan.person || 'Contact'}. This will deduct from your account and DECREASE your total balance.`}
-                </p>
-              </div>
-
-              {/* Loan details summary */}
-              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs text-muted-foreground border">
-                <div className="flex justify-between">
-                  <span>Contact:</span>
-                  <span className="font-semibold text-foreground">{repayingLoan.person || 'Contact'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Loan Type:</span>
-                  <span className="font-semibold text-foreground">
-                    {repayingLoan.type === 'given' ? 'Loan Given (Owed to you)' : 'Loan Taken (Borrowed)'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Original Amount:</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(repayingLoan.amount)}</span>
+                <div className="space-y-1.5">
+                  <Label htmlFor="forgiveDate">Date</Label>
+                  <DatePicker id="forgiveDate" value={forgiveFormData.date} onChange={(v) => setForgiveFormData({ ...forgiveFormData, date: v || todayKey() })} />
                 </div>
               </div>
-
-              {/* Repayment Amount */}
-              <div>
-                <Label htmlFor="repayAmount" className="text-sm font-medium">
-                  Repayment Amount (৳) *
-                </Label>
-                <div className="relative mt-1">
-                  <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="repayAmount"
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    className="pl-8"
-                    value={repayFormData.amount}
-                    onChange={(e) => setRepayFormData({ ...repayFormData, amount: e.target.value })}
-                    required
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="forgiveNotes">Reason</Label>
+                <Input id="forgiveNotes" value={forgiveFormData.notes} onChange={(e) => setForgiveFormData({ ...forgiveFormData, notes: e.target.value })} />
               </div>
-
-              {/* Account / Payment Method Selector */}
-              <div>
-                <Label htmlFor="repayAccount" className="text-sm font-medium">
-                  Deposit / Pay From Account *
-                </Label>
-                <Select
-                  value={repayFormData.accountId}
-                  onValueChange={(val) => setRepayFormData({ ...repayFormData, accountId: val })}
-                >
-                  <SelectTrigger id="repayAccount" className="mt-1">
-                    <SelectValue placeholder="Select account (Cash, Bank, Bkash...)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        <div className="flex items-center justify-between w-full gap-4">
-                          <span>{acc.name}</span>
-                          <span className="text-xs text-muted-foreground font-mono">
-                            ৳{Number(acc.balance ?? acc.currentBalance ?? 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {repayingLoan.type === 'given'
-                    ? 'Money will be deposited into this account (+ Balance)'
-                    : 'Money will be deducted from this account (- Balance)'}
-                </p>
-              </div>
-
-              {/* Repayment Date */}
-              <div>
-                <Label htmlFor="repayDate" className="text-sm font-medium">
-                  Repayment Date
-                </Label>
-                <Input
-                  id="repayDate"
-                  type="date"
-                  className="mt-1"
-                  value={repayFormData.date}
-                  onChange={(e) => setRepayFormData({ ...repayFormData, date: e.target.value })}
-                  required
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <Label htmlFor="repayNotes" className="text-sm font-medium">
-                  Notes / Remarks
-                </Label>
-                <Input
-                  id="repayNotes"
-                  className="mt-1"
-                  placeholder="e.g. Bank transfer, Cash returned in full"
-                  value={repayFormData.notes}
-                  onChange={(e) => setRepayFormData({ ...repayFormData, notes: e.target.value })}
-                />
-              </div>
-
-              <DialogFooter className="pt-2 flex gap-2 sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsRepayDialogOpen(false)}
-                  disabled={repaySubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={repaySubmitting || !repayFormData.accountId || !repayFormData.amount}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  {repaySubmitting ? 'Recording...' : 'Confirm Repayment'}
+              <DialogFooter className="gap-2 pt-2">
+                <Button type="button" variant="secondary" onClick={() => setIsForgiveDialogOpen(false)} disabled={forgiveSubmitting}>Cancel</Button>
+                <Button type="submit" variant="destructive" disabled={forgiveSubmitting}>
+                  {forgiveSubmitting ? 'Saving…' : `Forgive ${formatCurrency(forgiveAmount)}`}
                 </Button>
               </DialogFooter>
             </form>
           )}
         </DialogContent>
       </Dialog>
-
-      {/* Forgive Loan Modal */}
-      <Dialog open={isForgiveDialogOpen} onOpenChange={setIsForgiveDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-              <HeartHandshake className="h-5 w-5 text-amber-600" />
-              Forgive Loan (Walk Over)
-            </DialogTitle>
-          </DialogHeader>
-
-          {forgivingLoan && (
-            <form onSubmit={handleConfirmForgive} className="space-y-4 pt-2">
-              {/* Warning/Explanation banner */}
-              <div className="rounded-lg p-3 border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100">
-                <p className="text-xs leading-relaxed">
-                  You are forgiving the remaining loan of <strong className="font-bold">৳{Math.max(0, forgivingLoan.amount - (forgivingLoan.repaid_amount || 0)).toLocaleString()}</strong> to <strong className="font-bold">{forgivingLoan.person || 'Contact'}</strong>.
-                </p>
-                <p className="text-xs mt-1.5 opacity-90">
-                  ⚠️ This loan will be <strong>removed from active pending loans</strong> and converted into a <strong>permanent expense</strong>.
-                </p>
-              </div>
-
-              {/* Loan details summary */}
-              <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs text-muted-foreground border">
-                <div className="flex justify-between">
-                  <span>Contact:</span>
-                  <span className="font-semibold text-foreground">{forgivingLoan.person || 'Contact'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Original Amount:</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(forgivingLoan.amount)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Forgiven Amount:</span>
-                  <span className="font-semibold text-rose-600">
-                    {formatCurrency(Math.max(0, forgivingLoan.amount - (forgivingLoan.repaid_amount || 0)))}
-                  </span>
-                </div>
-              </div>
-
-              {/* Expense Category */}
-              <div>
-                <Label htmlFor="forgiveCategory" className="text-sm font-medium">
-                  Expense Category
-                </Label>
-                <Select
-                  value={forgiveFormData.categoryId}
-                  onValueChange={(val) => setForgiveFormData({ ...forgiveFormData, categoryId: val })}
-                >
-                  <SelectTrigger id="forgiveCategory" className="mt-1">
-                    <SelectValue placeholder="Select Category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Defaults to "Loan Forgiven" / "Bad Debt" expense category.
-                </p>
-              </div>
-
-              {/* Date */}
-              <div>
-                <Label htmlFor="forgiveDate" className="text-sm font-medium">
-                  Date
-                </Label>
-                <Input
-                  id="forgiveDate"
-                  type="date"
-                  className="mt-1"
-                  value={forgiveFormData.date}
-                  onChange={(e) => setForgiveFormData({ ...forgiveFormData, date: e.target.value })}
-                  required
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <Label htmlFor="forgiveNotes" className="text-sm font-medium">
-                  Remarks / Reason
-                </Label>
-                <Input
-                  id="forgiveNotes"
-                  className="mt-1"
-                  value={forgiveFormData.notes}
-                  onChange={(e) => setForgiveFormData({ ...forgiveFormData, notes: e.target.value })}
-                  placeholder="e.g. Forgiven loan / walked over"
-                />
-              </div>
-
-              <DialogFooter className="pt-2 flex gap-2 sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsForgiveDialogOpen(false)}
-                  disabled={forgiveSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={forgiveSubmitting}
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
-                >
-                  {forgiveSubmitting ? 'Recording...' : 'Confirm & Forgive Loan'}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+    </>
   );
 }

@@ -135,7 +135,7 @@ router.get('/', authenticateToken, (req, res) => {
 // POST /api/accounts — create a new account
 router.post('/', authenticateToken, (req, res) => {
   try {
-    const { name, type, account_number, initial_balance, color, icon } = req.body;
+    const { name, type, account_number, initial_balance, color, icon, bank_name } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Account name is required' });
     }
@@ -171,6 +171,7 @@ router.post('/', authenticateToken, (req, res) => {
       name:            name.trim(),
       type:            accType,
       account_number:  account_number ? String(account_number).trim() : null,
+      bank_name:       bank_name ? String(bank_name).trim().slice(0, 120) : null,
       initial_balance: initial,
       color:           color || '#4ECDC4',
       icon:            accIcon,
@@ -201,7 +202,7 @@ router.put('/:id', authenticateToken, (req, res) => {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    const { name, type, account_number, initial_balance, color, icon } = req.body;
+    const { name, type, account_number, initial_balance, color, icon, bank_name } = req.body;
     
     // Check duplicate name if name changed
     if (name && name.trim().toLowerCase() !== acc.name.toLowerCase()) {
@@ -221,6 +222,7 @@ router.put('/:id', authenticateToken, (req, res) => {
       initial_balance: initial_balance !== undefined ? parseFloat(initial_balance) || 0 : acc.initial_balance,
       color:           color           !== undefined ? color       : acc.color,
       icon:            icon            !== undefined ? icon        : acc.icon,
+      bank_name:       bank_name       !== undefined ? (bank_name ? String(bank_name).trim().slice(0, 120) : null) : acc.bank_name,
       updated_at:      new Date().toISOString(),
     };
 

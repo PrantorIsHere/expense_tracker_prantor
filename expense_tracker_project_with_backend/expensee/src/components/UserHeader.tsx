@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar as ErpAvatar } from '@/components/erp';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -108,11 +108,14 @@ export default function UserHeader() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback>{getInitials(session.username)}</AvatarFallback>
-            </Avatar>
-          </Button>
+          <button
+            type="button"
+            className="flex h-9 items-center gap-2 rounded-md px-1.5 text-sm text-navbar-muted hover:bg-navbar-hover hover:text-navbar-foreground"
+            aria-label={`Account menu for ${session.username}`}
+          >
+            <ErpAvatar name={session.username} size="sm" />
+            <span className="hidden max-w-32 truncate sm:inline">{session.username}</span>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
